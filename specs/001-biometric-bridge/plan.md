@@ -10,7 +10,7 @@ Build a lightweight Go binary that binds to `127.0.0.1:7070` and provides a web 
 ## Technical Context
 
 **Language/Version**: Go 1.22+
-**Primary Dependencies**: `google.golang.org/grpc` (G-SDK driver), `github.com/golang-jwt/jwt/v5` (JWT validation), `github.com/gorilla/websocket` (WebSocket), `gopkg.in/yaml.v3` (config), `log/slog` (structured logging)
+**Primary Dependencies**: BS2 Device SDK via CGo (primary driver; G-SDK deferred pending license key), `github.com/golang-jwt/jwt/v5` (JWT validation), `github.com/gorilla/websocket` (WebSocket), `gopkg.in/yaml.v3` (config), `log/slog` (structured logging)
 **Storage**: N/A (zero persistence by constitution)
 **Testing**: `go test`, `testing` stdlib; integration tests against mock driver
 **Target Platform**: Linux amd64 (primary), Windows amd64, macOS amd64/arm64

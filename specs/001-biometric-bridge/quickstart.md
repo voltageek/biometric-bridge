@@ -8,17 +8,25 @@
 | Tool | Version | Check Command |
 |------|---------|---------------|
 | Go | 1.22+ | `go version` |
-| Suprema Device Gateway | 1.9.0+ | Binary in `device_gateway_linux_x64_V1.9.0_20260127/` |
+| GCC / CGo toolchain | Any | `gcc --version` |
+| BS2 Device SDK | V2 | Shared library at `biostar-device-sdk/Lib/Linux/lib/x64/libBS_SDK_V2.so` |
 | Fingerprint reader | Any Suprema BioStar 2 compatible | Connected to network or USB |
 
-## 1. Start the Device Gateway (G-SDK driver only)
+## 1. Set Up the BS2 Shared Library
+
+Verify the shared library exists:
 
 ```bash
-cd device_gateway_linux_x64_V1.9.0_20260127/
-./device_gateway_linux_x64
+ls -la biostar-device-sdk/Lib/Linux/lib/x64/libBS_SDK_V2.so
 ```
 
-Verify it's running — the gRPC server should be listening on `localhost:4000`.
+Set the library path so the bridge can find it at runtime:
+
+```bash
+export LD_LIBRARY_PATH="$(pwd)/biostar-device-sdk/Lib/Linux/lib/x64:$LD_LIBRARY_PATH"
+```
+
+> **Note**: For the G-SDK driver (deferred — requires license key), you would instead start the Suprema Device Gateway binary on `localhost:4000`. See the G-SDK section in research.md for details.
 
 ## 2. Generate a Test Keypair
 
@@ -55,11 +63,10 @@ events:
   reconnect_base: "1s"
   reconnect_cap:  "120s"
 
-driver: gsdk
+driver: bs2
 
-gsdk:
-  gateway_addr:    "127.0.0.1:4000"
-  gateway_ca_cert: "./device_gateway_linux_x64_V1.9.0_20260127/cert/ca.crt"
+bs2:
+  lib_path: "./biostar-device-sdk/Lib/Linux/lib/x64/libBS_SDK_V2.so"
 ```
 
 Adjust `devices[].addr` to match your reader's IP address.
@@ -67,13 +74,13 @@ Adjust `devices[].addr` to match your reader's IP address.
 ## 4. Build and Run
 
 ```bash
-# G-SDK driver (pure Go)
-go build -tags gsdk -o biometric-bridge ./cmd/bridge
-./biometric-bridge
-
-# BS2 driver (requires CGo + shared library)
+# BS2 driver (primary — requires CGo + shared library)
 CGO_ENABLED=1 go build -tags bs2 -o biometric-bridge ./cmd/bridge
 ./biometric-bridge
+
+# G-SDK driver (deferred — requires license key + Device Gateway running)
+# go build -tags gsdk -o biometric-bridge ./cmd/bridge
+# ./biometric-bridge
 ```
 
 Expected output:
