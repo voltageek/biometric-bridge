@@ -30,6 +30,7 @@ var (
 	flagTest   = flag.Bool("test", false, "Run a single scan test and exit (no HTTP server)")
 	flagOutput = flag.String("output", "", "Save captured fingerprint image (PNG if .png extension, raw grayscale otherwise; only with --test)")
 	flagFinger = flag.String("finger", "", "Finger position for LED guidance during --test scan (e.g., right_index, left_thumb)")
+	flagMode   = flag.String("mode", "", "Multi-finger capture mode for --test: left_four, right_four, two_thumbs")
 )
 
 func main() {
@@ -184,6 +185,7 @@ func run() error {
 // runTestScan performs a single fingerprint capture for testing purposes.
 // It prints device info, captures one image, displays results (quality, size,
 // hex preview), optionally saves the raw image to a file, then cleans up.
+// When --mode is specified, performs a multi-finger slap capture instead.
 func runTestScan(drv driver.Driver, cfg *config.BridgeConfig) error {
 	defer func() {
 		slog.Info("test: closing driver")
@@ -206,6 +208,12 @@ func runTestScan(drv driver.Driver, cfg *config.BridgeConfig) error {
 	fmt.Printf("  ID:       %s\n", dev.ID)
 	fmt.Printf("  Firmware: %s\n", dev.FirmwareVersion)
 	fmt.Println()
+
+	// Multi-finger slap capture mode
+	if *flagMode != "" {
+		return runTestSlapScan(drv, dev)
+	}
+
 	fmt.Println("  Place your finger on the scanner...")
 	fmt.Println()
 
@@ -249,6 +257,85 @@ func runTestScan(drv driver.Driver, cfg *config.BridgeConfig) error {
 			return fmt.Errorf("failed to save image: %w", err)
 		}
 		fmt.Printf("  Image saved to: %s\n", *flagOutput)
+		fmt.Println()
+	}
+
+	fmt.Println("  Test complete.")
+	return nil
+}
+
+// runTestSlapScan performs a multi-finger slap capture test.
+func runTestSlapScan(drv driver.Driver, dev driver.DeviceInfo) error {
+	mode := driver.CaptureMode(*flagMode)
+	if !driver.ValidCaptureModes[mode] {
+		return fmt.Errorf("invalid --mode value %q; valid values: left_four, right_four, two_thumbs", *flagMode)
+	}
+
+	fmt.Printf("  Capture mode: %s\n", *flagMode)
+	fmt.Println()
+	fmt.Println("  Place your fingers on the scanner...")
+	fmt.Println()
+
+	scanCtx, scanCancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer scanCancel()
+
+	result, err := drv.SlapScan(scanCtx, dev.Name, mode)
+	if err != nil {
+		return fmt.Errorf("test slap scan failed: %w", err)
+	}
+
+	// Display results
+	fmt.Println("  ─── SLAP SCAN RESULT ───")
+	fmt.Println()
+	fmt.Printf("  Slap image:  %d x %d pixels (%d bytes)\n",
+		result.SlapWidth, result.SlapHeight, len(result.SlapImage))
+	fmt.Printf("  Fingers:     %d detected\n", len(result.Fingers))
+	fmt.Println()
+
+	for i, f := range result.Fingers {
+		fingerLabel := string(f.Finger)
+		if fingerLabel == "" {
+			fingerLabel = "unknown"
+		}
+		fmt.Printf("  Finger %d: %-15s %4d x %4d  quality=%d  (%d bytes)\n",
+			i+1, fingerLabel, f.Width, f.Height, f.Quality, len(f.Template))
+	}
+	fmt.Println()
+
+	// Save output if requested
+	if *flagOutput != "" {
+		// Save the full slap image
+		slapResult := &driver.ScanResult{
+			Template: result.SlapImage,
+			Width:    result.SlapWidth,
+			Height:   result.SlapHeight,
+		}
+		slapPath := *flagOutput
+		if err := saveImage(slapPath, slapResult); err != nil {
+			return fmt.Errorf("failed to save slap image: %w", err)
+		}
+		fmt.Printf("  Slap image saved to: %s\n", slapPath)
+
+		// Save each finger as finger_N.png
+		base := strings.TrimSuffix(*flagOutput, ".png")
+		base = strings.TrimSuffix(base, ".raw")
+		for i, f := range result.Fingers {
+			fingerResult := &driver.ScanResult{
+				Template: f.Template,
+				Width:    f.Width,
+				Height:   f.Height,
+			}
+			fingerLabel := string(f.Finger)
+			if fingerLabel == "" {
+				fingerLabel = fmt.Sprintf("%d", i+1)
+			}
+			fingerPath := fmt.Sprintf("%s_finger_%s.png", base, fingerLabel)
+			if err := saveImage(fingerPath, fingerResult); err != nil {
+				slog.Warn("failed to save finger image", "path", fingerPath, "error", err)
+				continue
+			}
+			fmt.Printf("  Finger %d saved to: %s\n", i+1, fingerPath)
+		}
 		fmt.Println()
 	}
 

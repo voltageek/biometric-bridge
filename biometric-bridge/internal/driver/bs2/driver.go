@@ -536,6 +536,12 @@ func (d *BS2Driver) Scan(ctx context.Context, deviceName string, fingerHint driv
 	}, nil
 }
 
+// SlapScan is not supported by the BS2 driver — BS2 devices do not support
+// multi-finger slap capture with segmentation.
+func (d *BS2Driver) SlapScan(ctx context.Context, deviceName string, mode driver.CaptureMode) (*driver.SlapScanResult, error) {
+	return nil, driver.ErrSlapNotSupported
+}
+
 // Enroll performs a two-impression enrollment on the specified device.
 // The fingers parameter is ignored — BS2 devices do not have finger LEDs.
 func (d *BS2Driver) Enroll(ctx context.Context, deviceName, userID, userName string, fingers []driver.FingerPosition) error {

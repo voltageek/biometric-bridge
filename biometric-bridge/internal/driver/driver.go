@@ -3,7 +3,14 @@
 // appear outside of the driver sub-packages (Constitution Principle II).
 package driver
 
-import "context"
+import (
+	"context"
+	"errors"
+)
+
+// ErrSlapNotSupported is returned by drivers that do not support multi-finger
+// slap capture (e.g., the BS2 driver).
+var ErrSlapNotSupported = errors.New("slap capture not supported by this driver")
 
 // FingerPosition identifies which finger(s) should be scanned. When passed to
 // Scan or Enroll, drivers that support LED indicators will light up the
@@ -60,10 +67,36 @@ type DeviceInfo struct {
 
 // ScanResult holds the output of a single fingerprint scan.
 type ScanResult struct {
-	Template []byte // Raw fingerprint image/template bytes
-	Quality  int    // 0–100 quality score from the SDK
-	Width    int    // Image width in pixels (0 if not applicable)
-	Height   int    // Image height in pixels (0 if not applicable)
+	Template []byte         // Raw fingerprint image/template bytes
+	Quality  int            // 0–100 quality score from the SDK
+	Width    int            // Image width in pixels (0 if not applicable)
+	Height   int            // Image height in pixels (0 if not applicable)
+	Finger   FingerPosition // Which finger this image belongs to (set by segmentation)
+}
+
+// CaptureMode identifies a multi-finger capture group.
+type CaptureMode string
+
+const (
+	CaptureLeftFour  CaptureMode = "left_four"
+	CaptureRightFour CaptureMode = "right_four"
+	CaptureTwoThumbs CaptureMode = "two_thumbs"
+)
+
+// ValidCaptureModes is the set of recognized capture mode strings.
+var ValidCaptureModes = map[CaptureMode]bool{
+	CaptureLeftFour:  true,
+	CaptureRightFour: true,
+	CaptureTwoThumbs: true,
+}
+
+// SlapScanResult holds the output of a multi-finger (slap) capture.
+// It contains the full slap image plus the individual segmented finger images.
+type SlapScanResult struct {
+	SlapImage  []byte       // Full slap image (raw 8-bit grayscale)
+	SlapWidth  int          // Full slap image width
+	SlapHeight int          // Full slap image height
+	Fingers    []ScanResult // Individual segmented finger images
 }
 
 // DeviceState represents the operational state of a device.
@@ -118,6 +151,14 @@ type Driver interface {
 	// indicators before capture and clear them afterward.
 	// The context should carry a 10-second timeout.
 	Scan(ctx context.Context, deviceName string, finger FingerPosition) (*ScanResult, error)
+
+	// SlapScan captures multiple fingers simultaneously and segments them
+	// into individual finger images. The mode selects which finger group to
+	// capture (left_four, right_four, two_thumbs). Returns the full slap
+	// image and individual segmented finger images with quality scores.
+	// Drivers that do not support slap capture should return
+	// ErrSlapNotSupported.
+	SlapScan(ctx context.Context, deviceName string, mode CaptureMode) (*SlapScanResult, error)
 
 	// Enroll performs a multi-impression enrollment on the specified device.
 	// The fingers slice indicates which finger LED to light for each

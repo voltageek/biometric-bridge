@@ -76,6 +76,11 @@ package realscan
 #define RS_FINGER_LEFT_FOUR     12
 #define RS_FINGER_RIGHT_FOUR    13
 
+// Slap types (for RS_TakeImageDataSegment)
+#define RS_SLAP_LEFT_FOUR       1
+#define RS_SLAP_RIGHT_FOUR      2
+#define RS_SLAP_TWO_THUMB       4
+
 // ──────────────────────────────────────────────────────────────────────────────
 // Struct declarations matching RS_Data.h
 // ──────────────────────────────────────────────────────────────────────────────
@@ -87,6 +92,20 @@ typedef struct {
     char firmwareVersion[16];
     char hardwareVersion[16];
 } RSDeviceInfo;
+
+// Segmentation data structures (from RS_Data.h)
+typedef struct {
+    int x;
+    int y;
+} RSPoint;
+
+typedef struct {
+    int     fingerType;
+    RSPoint fingerPosition[4];
+    int     imageQuality;
+    int     rotation;
+    int     reserved[3];
+} RSSlapInfo;
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Function pointer typedefs for dynamically loaded SDK functions
@@ -146,6 +165,14 @@ typedef int (*fn_RS_TakeImageDataEx)(int deviceHandle, int timeout,
                                      int fingerIndex, int withLED,
                                      unsigned char** imageData, int* width, int* height);
 
+// Segmentation — all-in-one capture + segment
+typedef int (*fn_RS_TakeImageDataSegment)(int deviceHandle, int timeout,
+                                          unsigned char** imageData, int* imageWidth, int* imageHeight,
+                                          int* captureResult, int slapType, int* numOfFinger,
+                                          RSSlapInfo** slapInfo,
+                                          unsigned char*** fingerImageData,
+                                          int** fingerImageWidth, int** fingerImageHeight);
+
 // ──────────────────────────────────────────────────────────────────────────────
 // SDK handle and loaded function pointers
 // ──────────────────────────────────────────────────────────────────────────────
@@ -173,6 +200,7 @@ static fn_RS_RegisterHotPluggingCallback p_RegisterHotPluggingCallback;
 static fn_RS_SetFingerLED               p_SetFingerLED;
 static fn_RS_SetModeLED                 p_SetModeLED;
 static fn_RS_TakeImageDataEx            p_TakeImageDataEx;
+static fn_RS_TakeImageDataSegment       p_TakeImageDataSegment;
 
 // loadSDK dynamically loads the RealScan shared library and resolves symbols.
 static int loadSDK(const char* libPath) {
@@ -200,6 +228,7 @@ static int loadSDK(const char* libPath) {
     p_SetFingerLED        = (fn_RS_SetFingerLED)dlsym(sdk_handle, "RS_SetFingerLED");
     p_SetModeLED          = (fn_RS_SetModeLED)dlsym(sdk_handle, "RS_SetModeLED");
     p_TakeImageDataEx     = (fn_RS_TakeImageDataEx)dlsym(sdk_handle, "RS_TakeImageDataEx");
+    p_TakeImageDataSegment = (fn_RS_TakeImageDataSegment)dlsym(sdk_handle, "RS_TakeImageDataSegment");
 
     // Required symbols (hot plugging is optional — may not be present in all SDK versions)
     if (!p_InitSDK || !p_ExitSDK || !p_InitDevice || !p_ExitDevice ||
@@ -320,6 +349,28 @@ static int sdk_take_image_data_ex(int deviceHandle, int timeout,
     return p_TakeImageDataEx(deviceHandle, timeout, fingerIndex, withLED, imageData, width, height);
 }
 
+static int sdk_take_image_data_segment(int deviceHandle, int timeout,
+                                        unsigned char** imageData, int* imageWidth, int* imageHeight,
+                                        int* captureResult, int slapType, int* numOfFinger,
+                                        RSSlapInfo** slapInfo,
+                                        unsigned char*** fingerImageData,
+                                        int** fingerImageWidth, int** fingerImageHeight) {
+    if (p_TakeImageDataSegment == NULL) return -999;
+    return p_TakeImageDataSegment(deviceHandle, timeout, imageData, imageWidth, imageHeight,
+                                   captureResult, slapType, numOfFinger, slapInfo,
+                                   fingerImageData, fingerImageWidth, fingerImageHeight);
+}
+
+// Helper to access segmented finger image data from Go.
+// The SDK returns unsigned char** (array of pointers) and int* (arrays).
+// Go cannot directly index triple-pointer types, so these helpers do it in C.
+static unsigned char* get_finger_image(unsigned char** images, int index) {
+    return images[index];
+}
+static int get_finger_dim(int* dims, int index) {
+    return dims[index];
+}
+
 // ──────────────────────────────────────────────────────────────────────────────
 // C callback forwarders — run on SDK threads, push events to Go.
 // ──────────────────────────────────────────────────────────────────────────────
@@ -357,7 +408,56 @@ const (
 
 	// Capture timeout for a single scan in milliseconds
 	defaultCaptureTimeoutMS = 10000
+
+	// Slap capture timeout — longer because user must place multiple fingers
+	defaultSlapCaptureTimeoutMS = 15000
 )
+
+// slapModeInfo maps a CaptureMode to the SDK capture mode, slap type, and
+// mode LED index for multi-finger group captures.
+type slapModeInfo struct {
+	captureMode int // RS_CAPTURE_FLAT_* constant
+	slapType    int // RS_SLAP_* constant
+	modeLED     int // RS_LED_MODE_* constant
+	fingerIndex int // RS_FINGER_* group index for TakeImageDataEx
+}
+
+var slapModeMap = map[driver.CaptureMode]slapModeInfo{
+	driver.CaptureLeftFour: {
+		captureMode: 4,    // RS_CAPTURE_FLAT_LEFT_FOUR_FINGERS
+		slapType:    1,    // RS_SLAP_LEFT_FOUR
+		modeLED:     0x01, // RS_LED_MODE_LEFT_FINGER4
+		fingerIndex: 12,   // RS_FINGER_LEFT_FOUR
+	},
+	driver.CaptureRightFour: {
+		captureMode: 5,    // RS_CAPTURE_FLAT_RIGHT_FOUR_FINGERS
+		slapType:    2,    // RS_SLAP_RIGHT_FOUR
+		modeLED:     0x02, // RS_LED_MODE_RIGHT_FINGER4
+		fingerIndex: 13,   // RS_FINGER_RIGHT_FOUR
+	},
+	driver.CaptureTwoThumbs: {
+		captureMode: 3,    // RS_CAPTURE_FLAT_TWO_FINGERS
+		slapType:    4,    // RS_SLAP_TWO_THUMB
+		modeLED:     0x03, // RS_LED_MODE_TWO_THUMB
+		fingerIndex: 11,   // RS_FINGER_TWO_THUMB
+	},
+}
+
+// slapFingerTypeToPosition maps the RSSlapInfo.fingerType values returned by
+// the SDK's segmentation to our FingerPosition constants. These correspond to
+// the RS_FGP_* constants in RS_ParamDef.h.
+var slapFingerTypeToPosition = map[int]driver.FingerPosition{
+	1:  driver.FingerRightThumb,
+	2:  driver.FingerRightIndex,
+	3:  driver.FingerRightMiddle,
+	4:  driver.FingerRightRing,
+	5:  driver.FingerRightLittle,
+	6:  driver.FingerLeftThumb,
+	7:  driver.FingerLeftIndex,
+	8:  driver.FingerLeftMiddle,
+	9:  driver.FingerLeftRing,
+	10: driver.FingerLeftLittle,
+}
 
 // fingerLEDInfo maps a FingerPosition to the SDK's finger index constant
 // and the appropriate mode LED to light.
@@ -680,6 +780,181 @@ func (d *RSDriver) Scan(ctx context.Context, deviceName string, finger driver.Fi
 		Quality:  quality,
 		Width:    int(width),
 		Height:   int(height),
+	}, nil
+}
+
+// SlapScan captures multiple fingers simultaneously and segments the result
+// into individual finger images. The mode selects which finger group to capture
+// (left_four, right_four, two_thumbs). The device capture mode is temporarily
+// switched and restored after capture.
+func (d *RSDriver) SlapScan(ctx context.Context, deviceName string, mode driver.CaptureMode) (*driver.SlapScanResult, error) {
+	modeInfo, ok := slapModeMap[mode]
+	if !ok {
+		return nil, fmt.Errorf("unsupported capture mode: %s", mode)
+	}
+
+	dev, err := d.getDevice(deviceName)
+	if err != nil {
+		return nil, err
+	}
+
+	// Mark device as capturing
+	d.mu.Lock()
+	if dev.capturing {
+		d.mu.Unlock()
+		return nil, fmt.Errorf("device %q: capture already in progress", deviceName)
+	}
+	dev.capturing = true
+	d.mu.Unlock()
+	defer func() {
+		d.mu.Lock()
+		dev.capturing = false
+		d.mu.Unlock()
+	}()
+
+	handle := C.int(dev.handle)
+
+	// Switch capture mode to the multi-finger mode
+	rc := C.sdk_set_capture_mode(handle, C.int(modeInfo.captureMode),
+		C.RS_AUTO_SENSITIVITY_HIGH, 1)
+	if rc != C.RS_SUCCESS {
+		return nil, fmt.Errorf("failed to set capture mode %s on device %q: %s (code %d)",
+			mode, deviceName, rsErrString(int(rc)), rc)
+	}
+
+	// Restore single-finger capture mode when done
+	defer func() {
+		rc := C.sdk_set_capture_mode(handle,
+			C.RS_CAPTURE_FLAT_SINGLE_FINGER,
+			C.RS_AUTO_SENSITIVITY_HIGH, 1)
+		if rc != C.RS_SUCCESS {
+			slog.Warn("failed to restore single-finger capture mode",
+				"device", deviceName, "error", rsErrString(int(rc)))
+		}
+	}()
+
+	// Light mode LED to guide finger placement
+	C.sdk_set_mode_led(handle, C.int(modeInfo.modeLED), 1)
+	defer clearLEDs(handle)
+
+	// Set up context cancellation to abort capture
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			C.sdk_abort_capture(handle)
+		case <-done:
+		}
+	}()
+
+	// Blocking segmented capture
+	var imageData *C.uchar
+	var imageWidth, imageHeight C.int
+	var captureResult C.int
+	var numOfFinger C.int
+	var slapInfo *C.RSSlapInfo
+	var fingerImageData **C.uchar
+	var fingerImageWidth *C.int
+	var fingerImageHeight *C.int
+
+	rc = C.sdk_take_image_data_segment(handle, C.int(defaultSlapCaptureTimeoutMS),
+		&imageData, &imageWidth, &imageHeight,
+		&captureResult, C.int(modeInfo.slapType), &numOfFinger,
+		&slapInfo, &fingerImageData, &fingerImageWidth, &fingerImageHeight)
+	close(done)
+
+	if rc != C.RS_SUCCESS {
+		if rc == C.RS_ERR_CAPTURE_ABORTED {
+			return nil, fmt.Errorf("slap scan cancelled on device %q", deviceName)
+		}
+		if rc == C.RS_ERR_CAPTURE_TIMEOUT {
+			return nil, fmt.Errorf("slap scan timed out on device %q", deviceName)
+		}
+		return nil, fmt.Errorf("slap scan failed on device %q: %s (code %d)",
+			deviceName, rsErrString(int(rc)), rc)
+	}
+
+	nFingers := int(numOfFinger)
+
+	// Copy the full slap image to Go memory
+	slapImageSize := int(imageWidth) * int(imageHeight)
+	goSlapImage := C.GoBytes(unsafe.Pointer(imageData), C.int(slapImageSize))
+
+	// Copy each segmented finger image to Go memory
+	fingers := make([]driver.ScanResult, 0, nFingers)
+	for i := 0; i < nFingers; i++ {
+		fImg := C.get_finger_image(fingerImageData, C.int(i))
+		fW := int(C.get_finger_dim(fingerImageWidth, C.int(i)))
+		fH := int(C.get_finger_dim(fingerImageHeight, C.int(i)))
+		fSize := fW * fH
+		goFingerImage := C.GoBytes(unsafe.Pointer(fImg), C.int(fSize))
+
+		// Get quality score for this finger
+		var nistQuality C.int
+		quality := 0
+		qrc := C.sdk_get_quality_score(fImg, C.int(fW), C.int(fH), &nistQuality)
+		if qrc == C.RS_SUCCESS {
+			quality = int(nistQuality)
+		} else {
+			slog.Debug("quality scoring failed for segmented finger",
+				"device", deviceName, "finger", i, "error", rsErrString(int(qrc)))
+		}
+
+		// Map the SDK fingerType to our FingerPosition
+		var fingerPos driver.FingerPosition
+		if slapInfo != nil {
+			// Access the i-th RSSlapInfo element
+			slapInfoPtr := (*C.RSSlapInfo)(unsafe.Pointer(
+				uintptr(unsafe.Pointer(slapInfo)) + uintptr(i)*unsafe.Sizeof(*slapInfo)))
+			fingerType := int(slapInfoPtr.fingerType)
+			if pos, ok := slapFingerTypeToPosition[fingerType]; ok {
+				fingerPos = pos
+			}
+			// Override quality with SDK-reported quality if available
+			if slapInfoPtr.imageQuality > 0 {
+				quality = int(slapInfoPtr.imageQuality)
+			}
+		}
+
+		fingers = append(fingers, driver.ScanResult{
+			Template: goFingerImage,
+			Quality:  quality,
+			Width:    fW,
+			Height:   fH,
+			Finger:   fingerPos,
+		})
+
+		slog.Debug("segmented finger",
+			"index", i,
+			"finger", string(fingerPos),
+			"width", fW,
+			"height", fH,
+			"quality", quality,
+		)
+	}
+
+	// Free SDK-allocated memory — the full slap image
+	C.sdk_free_image_data(imageData)
+	// Note: fingerImageData, fingerImageWidth, fingerImageHeight, and slapInfo
+	// are SDK-allocated arrays. The SDK manages their lifetime alongside the
+	// main image data returned by RS_TakeImageDataSegment.
+
+	// Success beep
+	C.sdk_beep(handle, C.int(rsBeepPattern1))
+
+	slog.Info("slap scan complete",
+		"device", deviceName,
+		"mode", string(mode),
+		"slapWidth", int(imageWidth),
+		"slapHeight", int(imageHeight),
+		"fingersDetected", nFingers,
+	)
+
+	return &driver.SlapScanResult{
+		SlapImage:  goSlapImage,
+		SlapWidth:  int(imageWidth),
+		SlapHeight: int(imageHeight),
+		Fingers:    fingers,
 	}, nil
 }
 

@@ -32,6 +32,7 @@ func NewRouter(deps RouterDeps) http.Handler {
 	// Authenticated API routes
 	mux.HandleFunc("GET /api/devices", NewDevicesHandler(deps.Driver))
 	mux.HandleFunc("POST /api/scan", NewScanHandler(deps.Driver, deps.Registry))
+	mux.HandleFunc("POST /api/slap-scan", NewSlapScanHandler(deps.Driver, deps.Registry))
 	mux.HandleFunc("POST /api/enroll", NewEnrollHandler(deps.Driver, deps.Registry))
 
 	// WebSocket event stream (auth handled inside the handler via query param)
