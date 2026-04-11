@@ -20,10 +20,10 @@
 
 **Purpose**: Project initialization, Go module, and directory structure
 
-- [ ] T001 Create project directory structure per plan.md: `biometric-bridge/cmd/bridge/`, `biometric-bridge/internal/{config,driver,auth,api,events,device}/`, `biometric-bridge/install/`
-- [ ] T002 Initialize Go module (`go mod init`) and add dependencies (`github.com/golang-jwt/jwt/v5`, `github.com/gorilla/websocket`, `gopkg.in/yaml.v3`) in `biometric-bridge/go.mod`
-- [ ] T003 [P] Create default `biometric-bridge/config.yaml` example file per quickstart.md
-- [ ] T004 [P] Create `biometric-bridge/install/biometric-bridge.service` (systemd unit) and `biometric-bridge/install/biometric-bridge.plist` (launchd plist)
+- [x] T001 Create project directory structure per plan.md: `biometric-bridge/cmd/bridge/`, `biometric-bridge/internal/{config,driver,auth,api,events,device}/`, `biometric-bridge/install/`
+- [x] T002 Initialize Go module (`go mod init`) and add dependencies (`github.com/golang-jwt/jwt/v5`, `github.com/gorilla/websocket`, `gopkg.in/yaml.v3`) in `biometric-bridge/go.mod`
+- [x] T003 [P] Create default `biometric-bridge/config.yaml` example file per quickstart.md
+- [x] T004 [P] Create `biometric-bridge/install/biometric-bridge.service` (systemd unit) and `biometric-bridge/install/biometric-bridge.plist` (launchd plist)
 
 ---
 
@@ -33,14 +33,14 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T005 Implement YAML config parsing and validation (FR-018) in `biometric-bridge/internal/config/config.go` — define `BridgeConfig`, `BridgeSettings`, `DeviceConfig`, `EventSettings`, `LogSettings`, `GSDKSettings`, `BS2Settings` structs per data-model.md; validate required fields, unknown driver, port ranges, listen address format; refuse to start on invalid config
-- [ ] T006 [P] Implement ECDSA public key loading from PEM file in `biometric-bridge/internal/auth/keys.go` — load and parse P-256 public key; return clear error if file missing or invalid (FR-017)
-- [ ] T007 [P] Implement JWT validation (ES256, iss, aud, exp, clock skew) in `biometric-bridge/internal/auth/token.go` — validate signature, issuer, audience, expiry; return structured errors for each failure mode per http-api.md auth section
-- [ ] T008 Implement HTTP auth middleware and WebSocket token extraction in `biometric-bridge/internal/auth/middleware.go` — middleware reads `Authorization: Bearer <token>` header; WS helper reads `token` query parameter; both call token validation from T007; skip auth for `/healthz`
-- [ ] T009 [P] Define `Driver` interface and shared types in `biometric-bridge/internal/driver/driver.go` — `Driver` interface with `Connect`, `Scan`, `Enroll`, `ListDevices`, `Subscribe`, `Close` methods; define `DeviceConfig`, `DeviceInfo`, `ScanResult`, `Event`, `DeviceState` types per data-model.md
-- [ ] T010 [P] Implement device registry with per-device busy lock in `biometric-bridge/internal/device/registry.go` — name-to-ID mapping, per-device mutex, state tracking (idle/busy/disconnected), `Acquire`/`Release` methods for FR-015, thread-safe access
-- [ ] T011 Implement structured logging setup with configurable verbosity in `biometric-bridge/cmd/bridge/main.go` — configure `log/slog` with level from config (error/info/debug), JSON handler to stdout (FR-016)
-- [ ] T012 Implement route registration, CORS middleware, and health check in `biometric-bridge/internal/api/router.go` — register all routes, apply CORS per http-api.md (single origin, allowed methods/headers), implement `GET /healthz` returning `{"status":"ok"}` (FR-012), apply auth middleware to `/api/*` routes
+- [x] T005 Implement YAML config parsing and validation (FR-018) in `biometric-bridge/internal/config/config.go` — define `BridgeConfig`, `BridgeSettings`, `DeviceConfig`, `EventSettings`, `LogSettings`, `GSDKSettings`, `BS2Settings` structs per data-model.md; validate required fields, unknown driver, port ranges, listen address format; refuse to start on invalid config
+- [x] T006 [P] Implement ECDSA public key loading from PEM file in `biometric-bridge/internal/auth/keys.go` — load and parse P-256 public key; return clear error if file missing or invalid (FR-017)
+- [x] T007 [P] Implement JWT validation (ES256, iss, aud, exp, clock skew) in `biometric-bridge/internal/auth/token.go` — validate signature, issuer, audience, expiry; return structured errors for each failure mode per http-api.md auth section
+- [x] T008 Implement HTTP auth middleware and WebSocket token extraction in `biometric-bridge/internal/auth/middleware.go` — middleware reads `Authorization: Bearer <token>` header; WS helper reads `token` query parameter; both call token validation from T007; skip auth for `/healthz`
+- [x] T009 [P] Define `Driver` interface and shared types in `biometric-bridge/internal/driver/driver.go` — `Driver` interface with `Connect`, `Scan`, `Enroll`, `ListDevices`, `Subscribe`, `Close` methods; define `DeviceConfig`, `DeviceInfo`, `ScanResult`, `Event`, `DeviceState` types per data-model.md
+- [x] T010 [P] Implement device registry with per-device busy lock in `biometric-bridge/internal/device/registry.go` — name-to-ID mapping, per-device mutex, state tracking (idle/busy/disconnected), `Acquire`/`Release` methods for FR-015, thread-safe access
+- [x] T011 Implement structured logging setup with configurable verbosity in `biometric-bridge/cmd/bridge/main.go` — configure `log/slog` with level from config (error/info/debug), JSON handler to stdout (FR-016)
+- [x] T012 Implement route registration, CORS middleware, and health check in `biometric-bridge/internal/api/router.go` — register all routes, apply CORS per http-api.md (single origin, allowed methods/headers), implement `GET /healthz` returning `{"status":"ok"}` (FR-012), apply auth middleware to `/api/*` routes
 
 **Checkpoint**: Foundation ready — config, auth, driver interface, device registry, routing, and logging are all in place. User story implementation can now begin.
 
@@ -54,7 +54,7 @@
 
 ### Implementation for User Story 1
 
-- [ ] T013 [US1] Implement `POST /api/scan` handler in `biometric-bridge/internal/api/scan.go` — parse `ScanRequest` JSON, resolve device name via registry, acquire device lock (409 if busy, 503 if disconnected), call `Driver.Scan` with 10s timeout context, return base64-encoded template + quality score per http-api.md contract, release device lock on completion; handle 400/502/504 error codes
+- [x] T013 [US1] Implement `POST /api/scan` handler in `biometric-bridge/internal/api/scan.go` — parse `ScanRequest` JSON, resolve device name via registry, acquire device lock (409 if busy, 503 if disconnected), call `Driver.Scan` with 10s timeout context, return base64-encoded template + quality score per http-api.md contract, release device lock on completion; handle 400/502/504 error codes
 
 **Checkpoint**: Scan endpoint is functional. With a driver implementation (Phase 8/9), this delivers end-to-end fingerprint capture from the browser.
 
@@ -68,7 +68,7 @@
 
 ### Implementation for User Story 2
 
-- [ ] T014 [US2] Implement `POST /api/enroll` handler in `biometric-bridge/internal/api/enroll.go` — parse `EnrollRequest` JSON (validate `deviceId`, `userId`, `userName` required), resolve device via registry, acquire device lock (409/503), call `Driver.Enroll` with user ID, user name, and device; 10s timeout per impression; return success or error per http-api.md contract; release device lock on completion; handle 400/502/504 error codes
+- [x] T014 [US2] Implement `POST /api/enroll` handler in `biometric-bridge/internal/api/enroll.go` — parse `EnrollRequest` JSON (validate `deviceId`, `userId`, `userName` required), resolve device via registry, acquire device lock (409/503), call `Driver.Enroll` with user ID, user name, and device; 10s timeout per impression; return success or error per http-api.md contract; release device lock on completion; handle 400/502/504 error codes
 
 **Checkpoint**: Enroll endpoint is functional. Combined with US1, the two core biometric operations are complete.
 
@@ -84,7 +84,7 @@
 
 ### Implementation for User Story 5
 
-- [ ] T015 [US5] Implement startup auth key validation in `biometric-bridge/cmd/bridge/main.go` — at startup, load public key via `auth.LoadPublicKey`; if missing or invalid, log error and exit non-zero with clear message (FR-017); wire auth middleware from T008 into the router from T012
+- [x] T015 [US5] Implement startup auth key validation in `biometric-bridge/cmd/bridge/main.go` — at startup, load public key via `auth.LoadPublicKey`; if missing or invalid, log error and exit non-zero with clear message (FR-017); wire auth middleware from T008 into the router from T012
 
 **Checkpoint**: Auth is fully enforced. All authenticated endpoints reject invalid/missing/expired tokens. Health check remains open. Bridge refuses to start without a valid key file.
 
@@ -98,7 +98,7 @@
 
 ### Implementation for User Story 4
 
-- [ ] T016 [US4] Implement `GET /api/devices` handler in `biometric-bridge/internal/api/devices.go` — call `Driver.ListDevices`, map `DeviceInfo` to JSON response per http-api.md contract (id = name, model, firmwareVersion, fingerSupported); return 401 on auth failure
+- [x] T016 [US4] Implement `GET /api/devices` handler in `biometric-bridge/internal/api/devices.go` — call `Driver.ListDevices`, map `DeviceInfo` to JSON response per http-api.md contract (id = name, model, firmwareVersion, fingerSupported); return 401 on auth failure
 
 **Checkpoint**: Device listing is functional. The web app can now present a device picker before scan/enroll.
 
@@ -112,8 +112,8 @@
 
 ### Implementation for User Story 3
 
-- [ ] T017 [US3] Implement event broker fan-out hub in `biometric-bridge/internal/events/broker.go` — single input channel from `Driver.Subscribe`; up to 10 subscriber output channels (FR-004); non-blocking fan-out with warning log for slow consumers; subscriber registration/unregistration methods; goroutine lifecycle management
-- [ ] T018 [US3] Implement WebSocket event handler with token expiry in `biometric-bridge/internal/events/handler.go` — `GET /events` upgrade via gorilla/websocket; extract JWT from `token` query param; validate via auth; enforce 10-subscriber limit (503 on reject per websocket-api.md); register with broker; schedule `time.Timer` from JWT `exp` claim; on expiry send close frame code 4001 `"token expired"` and unregister; on client disconnect unregister; server-push only (no client data messages)
+- [x] T017 [US3] Implement event broker fan-out hub in `biometric-bridge/internal/events/broker.go` — single input channel from `Driver.Subscribe`; up to 10 subscriber output channels (FR-004); non-blocking fan-out with warning log for slow consumers; subscriber registration/unregistration methods; goroutine lifecycle management
+- [x] T018 [US3] Implement WebSocket event handler with token expiry in `biometric-bridge/internal/events/handler.go` — `GET /events` upgrade via gorilla/websocket; extract JWT from `token` query param; validate via auth; enforce 10-subscriber limit (503 on reject per websocket-api.md); register with broker; schedule `time.Timer` from JWT `exp` claim; on expiry send close frame code 4001 `"token expired"` and unregister; on client disconnect unregister; server-push only (no client data messages)
 
 **Checkpoint**: Real-time event streaming is functional. The web app receives scan, reconnecting, connected, and error events from all devices.
 
@@ -127,7 +127,7 @@
 
 ### Implementation for User Story 7
 
-- [ ] T019 [US7] Implement BS2 driver in `biometric-bridge/internal/driver/bs2/driver.go` — build tag `//go:build bs2`; implement `Driver` interface via CGo; `Connect`: `BS2_AllocateContext` + `BS2_ConnectDeviceViaIP`; `Scan`: `BS2_ScanFingerprintEx` with quality output; `Enroll`: two scans + `BS2UserBlob` enrollment; `ListDevices`: `BS2_GetDeviceInfo`; `Subscribe`: `BS2_StartMonitoringLog` callback forwarded via channel; `Close`: `BS2_DisconnectDevice` + `BS2_ReleaseContext`; CGo callback safety (minimal C-side forwarder to Go channel); register via `init()`; shared library at `biostar-device-sdk/Lib/Linux/lib/x64/libBS_SDK_V2.so`
+- [x] T019 [US7] Implement BS2 driver in `biometric-bridge/internal/driver/bs2/driver.go` — build tag `//go:build bs2`; implement `Driver` interface via CGo; `Connect`: `BS2_AllocateContext` + `BS2_ConnectDeviceViaIP`; `Scan`: `BS2_ScanFingerprintEx` with quality output; `Enroll`: two scans + `BS2UserBlob` enrollment; `ListDevices`: `BS2_GetDeviceInfo`; `Subscribe`: `BS2_StartMonitoringLog` callback forwarded via channel; `Close`: `BS2_DisconnectDevice` + `BS2_ReleaseContext`; CGo callback safety (minimal C-side forwarder to Go channel); register via `init()`; shared library at `biostar-device-sdk/Lib/Linux/lib/x64/libBS_SDK_V2.so`
 - [ ] T020 [DEFERRED] [US7] Implement G-SDK driver in `biometric-bridge/internal/driver/gsdk/driver.go` — (pending G-SDK license key) build tag `//go:build gsdk`; implement `Driver` interface; `Connect`: gRPC TLS connection to gateway, `ConnectSvc.Connect` per device, populate `DeviceInfo` via `DeviceSvc.GetInfo` + `GetCapabilityInfo`; `Scan`: `FingerSvc.Scan` with 10s context timeout; `Enroll`: two sequential scans + `UserSvc.Enroll`; `ListDevices`: return cached device info; `Subscribe`: `EventSvc.EnableMonitoringMulti` + `SubscribeRealtimeLog` streaming to channel; `Close`: `ConnectSvc.Disconnect` all; register via `init()`
 
 **Checkpoint**: BS2 driver implements the `Driver` interface. Build tag `bs2` selects it at compile time. The external API is SDK-agnostic (FR-013, Constitution Principle VI). G-SDK driver deferred until license key is available.
@@ -142,7 +142,7 @@
 
 ### Implementation for User Story 6
 
-- [ ] T021 [US6] Implement reconnection with exponential backoff in BS2 driver (`biometric-bridge/internal/driver/bs2/driver.go`) — detect disconnection via `OnDeviceDisconnected` callback; start reconnection goroutine with backoff from `EventSettings` (base 1s, cap 2m); emit `reconnecting` events with attempt count and wait time; emit `connected` event on success; update device state in registry to disconnected/idle; isolate per-device failures so other devices remain operational (FR-010)
+- [x] T021 [US6] Implement reconnection with exponential backoff in BS2 driver (`biometric-bridge/internal/driver/bs2/driver.go`) — detect disconnection via `OnDeviceDisconnected` callback; start reconnection goroutine with backoff from `EventSettings` (base 1s, cap 2m); emit `reconnecting` events with attempt count and wait time; emit `connected` event on success; update device state in registry to disconnected/idle; isolate per-device failures so other devices remain operational (FR-010)
 - [ ] T022 [DEFERRED] [US6] Implement reconnection with exponential backoff in G-SDK driver (`biometric-bridge/internal/driver/gsdk/driver.go`) — (pending G-SDK license key) detect gRPC stream errors / connection loss; start reconnection goroutine with same backoff parameters; emit `reconnecting`/`connected` events; update device state in registry; isolate per-device failures (FR-010)
 
 **Checkpoint**: BS2 device disconnections are handled automatically. The event stream reports reconnection status. Other devices continue operating normally. G-SDK reconnection deferred until license key is available.
@@ -153,8 +153,8 @@
 
 **Purpose**: Wire everything together in the main function and implement graceful shutdown.
 
-- [ ] T023 Implement application entry point in `biometric-bridge/cmd/bridge/main.go` — load config (T005), validate config (FR-018), load auth key (T006/T015), initialize driver based on config `driver` field, connect all devices (FR-011: fail-fast if any device unreachable), initialize device registry (T010), start event broker (T017), register routes with auth middleware (T008/T012), start HTTP server on configured listen address, log startup complete
-- [ ] T024 Implement graceful shutdown in `biometric-bridge/cmd/bridge/main.go` — listen for `SIGINT`/`SIGTERM`; ordered teardown per FR-019: (1) stop accepting new HTTP connections, (2) close all WebSocket connections via broker drain, (3) cancel in-progress scan/enroll via context cancellation, (4) call `Driver.Close` to release device connections, (5) exit 0; log each shutdown step
+- [x] T023 Implement application entry point in `biometric-bridge/cmd/bridge/main.go` — load config (T005), validate config (FR-018), load auth key (T006/T015), initialize driver based on config `driver` field, connect all devices (FR-011: fail-fast if any device unreachable), initialize device registry (T010), start event broker (T017), register routes with auth middleware (T008/T012), start HTTP server on configured listen address, log startup complete
+- [x] T024 Implement graceful shutdown in `biometric-bridge/cmd/bridge/main.go` — listen for `SIGINT`/`SIGTERM`; ordered teardown per FR-019: (1) stop accepting new HTTP connections, (2) close all WebSocket connections via broker drain, (3) cancel in-progress scan/enroll via context cancellation, (4) call `Driver.Close` to release device connections, (5) exit 0; log each shutdown step
 
 **Checkpoint**: The bridge starts, validates all prerequisites, connects devices, serves requests, and shuts down cleanly.
 
@@ -164,10 +164,10 @@
 
 **Purpose**: Improvements that affect multiple user stories
 
-- [ ] T025 [P] Verify all error responses follow the `{"error":"..."}` JSON format across all handlers in `biometric-bridge/internal/api/`
-- [ ] T026 [P] Add structured log statements at key points across all packages: config load, key load, device connect/disconnect, scan start/complete, enroll start/complete, auth reject, event stream open/close, shutdown steps
+- [x] T025 [P] Verify all error responses follow the `{"error":"..."}` JSON format across all handlers in `biometric-bridge/internal/api/`
+- [x] T026 [P] Add structured log statements at key points across all packages: config load, key load, device connect/disconnect, scan start/complete, enroll start/complete, auth reject, event stream open/close, shutdown steps
 - [ ] T027 Validate end-to-end flow using quickstart.md steps: set up BS2 shared library, generate keypair, configure bridge, build with `-tags bs2`, start bridge, generate test JWT, test all endpoints (`/healthz`, `/api/devices`, `/api/scan`, `/api/enroll`, `/events`)
-- [ ] T028 [P] Review all handlers for consistent Content-Type `application/json` headers and CORS header application
+- [x] T028 [P] Review all handlers for consistent Content-Type `application/json` headers and CORS header application
 
 ---
 
