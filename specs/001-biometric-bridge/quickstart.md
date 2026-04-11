@@ -94,9 +94,53 @@ level=INFO msg="starting event monitor"
 level=INFO msg="listening" addr=127.0.0.1:7070
 ```
 
+## 4a. Test an Attached Reader (--test mode)
+
+Use the built-in `--test` flag to verify the reader is working without starting the HTTP server. The bridge connects to the first configured device, captures one fingerprint, prints a quality/hex report, and exits.
+
+```bash
+# Basic test — place finger when prompted
+./biometric-bridge --test
+
+# Light the LED for a specific finger during capture
+./biometric-bridge --test --finger right_index
+
+# Valid --finger values:
+#   left_little  left_ring  left_middle  left_index  left_thumb
+#   right_thumb  right_index  right_middle  right_ring  right_little
+
+# Save the captured image to disk
+./biometric-bridge --test --output capture.png     # PNG (requires dimensions in driver)
+./biometric-bridge --test --output capture.raw     # raw 8-bit grayscale bytes
+```
+
+For flat-bed readers that support simultaneous multi-finger capture, use `--mode`:
+
+```bash
+./biometric-bridge --test --mode right_four       # four right-hand fingers
+./biometric-bridge --test --mode left_four        # four left-hand fingers
+./biometric-bridge --test --mode two_thumbs       # both thumbs
+
+# Save full slap image + individual finger images
+./biometric-bridge --test --mode right_four --output capture.png
+# Produces: capture.png, capture_finger_right_index.png, etc.
+```
+
 ## 5. Generate a Test JWT
 
-Use a Go script, `jwt.io`, or any JWT library to create a token signed with `bridge-private.pem`:
+Use the included `gentoken` tool for quick test tokens:
+
+```bash
+TOKEN=$(go run ./cmd/gentoken -key bridge-private.pem)
+
+# Custom issuer and audience (must match config)
+TOKEN=$(go run ./cmd/gentoken -key bridge-private.pem -iss dev-server -aud biometric-bridge)
+
+# Longer-lived token
+TOKEN=$(go run ./cmd/gentoken -key bridge-private.pem -ttl 8h)
+```
+
+Alternatively, use `jwt.io` or any JWT library to create a token signed with `bridge-private.pem`:
 
 ```json
 {
@@ -112,7 +156,7 @@ Algorithm: ES256. Sign with the private key from step 2.
 ## 6. Test Endpoints
 
 ```bash
-TOKEN="<your-jwt-here>"
+TOKEN=$(go run ./cmd/gentoken -key bridge-private.pem)
 
 # Health check (no auth)
 curl http://127.0.0.1:7070/healthz
@@ -125,6 +169,12 @@ curl -X POST -H "Authorization: Bearer $TOKEN" \
      -H "Content-Type: application/json" \
      -d '{"deviceId":"reception"}' \
      http://127.0.0.1:7070/api/scan
+
+# Multi-finger slap scan (place four fingers simultaneously)
+curl -X POST -H "Authorization: Bearer $TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{"deviceId":"reception","mode":"right_four"}' \
+     http://127.0.0.1:7070/api/slap-scan
 
 # Enroll a user (place finger twice when prompted)
 curl -X POST -H "Authorization: Bearer $TOKEN" \
