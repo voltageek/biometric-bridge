@@ -1,0 +1,98 @@
+// Package driver defines the Driver interface and shared types that abstract
+// over different Suprema SDK backends (BS2, G-SDK). No SDK-specific imports
+// appear outside of the driver sub-packages (Constitution Principle II).
+package driver
+
+import "context"
+
+// DeviceConfig holds the configuration for connecting to a single device.
+// This mirrors config.DeviceConfig but lives in the driver package to avoid
+// a circular dependency.
+type DeviceConfig struct {
+	Name   string
+	Addr   string
+	Port   int
+	UseSSL bool
+}
+
+// DeviceInfo holds runtime metadata about a connected device, as returned by
+// GET /api/devices.
+type DeviceInfo struct {
+	Name            string // Human-readable name from config
+	ID              string // Opaque SDK-assigned identifier
+	Model           string // Hardware model (e.g., "BioStation 2")
+	FirmwareVersion string // Firmware version string
+	FingerSupported bool   // Whether the device has a fingerprint sensor
+}
+
+// ScanResult holds the output of a single fingerprint scan.
+type ScanResult struct {
+	Template []byte // Raw fingerprint template bytes
+	Quality  int    // 0–100 quality score from the SDK
+}
+
+// DeviceState represents the operational state of a device.
+type DeviceState int
+
+const (
+	DeviceIdle         DeviceState = iota // Ready for operations
+	DeviceBusy                            // Scan or enroll in progress
+	DeviceDisconnected                    // Reconnecting
+)
+
+func (s DeviceState) String() string {
+	switch s {
+	case DeviceIdle:
+		return "idle"
+	case DeviceBusy:
+		return "busy"
+	case DeviceDisconnected:
+		return "disconnected"
+	default:
+		return "unknown"
+	}
+}
+
+// Event is a real-time event emitted by a driver and fanned out to WebSocket
+// subscribers.
+type Event struct {
+	Type        string `json:"type"`                  // "scan" | "error" | "reconnecting" | "connected"
+	DeviceName  string `json:"deviceId"`              // Human-readable name from config
+	UserID      string `json:"userId,omitempty"`      // Present for "scan" events
+	EventCode   uint32 `json:"eventCode,omitempty"`   // Present for "scan" events
+	Attempt     int    `json:"attempt,omitempty"`     // Present for "reconnecting" events
+	WaitSeconds int    `json:"waitSeconds,omitempty"` // Present for "reconnecting" events
+	Message     string `json:"message,omitempty"`     // Present for "error" events
+}
+
+// DeviceStateUpdater is implemented by the device registry to allow drivers
+// to update device state on disconnect/reconnect without a circular dependency.
+type DeviceStateUpdater interface {
+	SetState(name string, state DeviceState)
+}
+
+// Driver is the interface that SDK-specific backends must implement.
+// Only one driver is active per build (selected via build tags).
+type Driver interface {
+	// Connect establishes connections to all configured devices.
+	// Returns an error if any device is unreachable (fail-fast, FR-011).
+	Connect(ctx context.Context, devices []DeviceConfig) error
+
+	// Scan captures a single fingerprint from the specified device.
+	// The context should carry a 10-second timeout.
+	Scan(ctx context.Context, deviceName string) (*ScanResult, error)
+
+	// Enroll performs a two-impression enrollment on the specified device.
+	// The context should carry a 10-second timeout per impression.
+	Enroll(ctx context.Context, deviceName, userID, userName string) error
+
+	// ListDevices returns metadata for all connected devices.
+	ListDevices() []DeviceInfo
+
+	// Subscribe returns a channel that receives real-time events from all
+	// connected devices. The channel is closed when the driver shuts down.
+	Subscribe() <-chan Event
+
+	// Close disconnects all devices and releases all resources.
+	Close() error
+}
