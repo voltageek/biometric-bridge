@@ -16,6 +16,7 @@ import (
 // scanRequest is the JSON body for POST /api/scan.
 type scanRequest struct {
 	DeviceID string `json:"deviceId"`
+	Finger   string `json:"finger,omitempty"` // Optional: finger position for LED guidance (e.g., "right_index")
 }
 
 // NewScanHandler returns a handler for POST /api/scan (T013).
@@ -28,6 +29,13 @@ func NewScanHandler(d driver.Driver, reg *device.Registry) http.HandlerFunc {
 		}
 		if req.DeviceID == "" {
 			writeError(w, http.StatusBadRequest, "invalid request: deviceId is required")
+			return
+		}
+
+		// Validate optional finger position
+		finger := driver.FingerPosition(req.Finger)
+		if req.Finger != "" && !driver.ValidFingerPositions[finger] {
+			writeError(w, http.StatusBadRequest, "invalid request: unrecognized finger position")
 			return
 		}
 
@@ -48,7 +56,7 @@ func NewScanHandler(d driver.Driver, reg *device.Registry) http.HandlerFunc {
 		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 		defer cancel()
 
-		result, err := d.Scan(ctx, req.DeviceID)
+		result, err := d.Scan(ctx, req.DeviceID, finger)
 		if err != nil {
 			slog.Warn("scan failed", "device", req.DeviceID, "error", err)
 			if ctx.Err() == context.DeadlineExceeded {

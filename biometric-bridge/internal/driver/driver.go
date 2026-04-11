@@ -5,6 +5,39 @@ package driver
 
 import "context"
 
+// FingerPosition identifies which finger(s) should be scanned. When passed to
+// Scan or Enroll, drivers that support LED indicators will light up the
+// corresponding mode and finger LEDs on the device before capture.
+type FingerPosition string
+
+const (
+	FingerNone        FingerPosition = "" // No LED guidance
+	FingerLeftLittle  FingerPosition = "left_little"
+	FingerLeftRing    FingerPosition = "left_ring"
+	FingerLeftMiddle  FingerPosition = "left_middle"
+	FingerLeftIndex   FingerPosition = "left_index"
+	FingerLeftThumb   FingerPosition = "left_thumb"
+	FingerRightThumb  FingerPosition = "right_thumb"
+	FingerRightIndex  FingerPosition = "right_index"
+	FingerRightMiddle FingerPosition = "right_middle"
+	FingerRightRing   FingerPosition = "right_ring"
+	FingerRightLittle FingerPosition = "right_little"
+)
+
+// ValidFingerPositions is the set of recognized finger position strings.
+var ValidFingerPositions = map[FingerPosition]bool{
+	FingerLeftLittle:  true,
+	FingerLeftRing:    true,
+	FingerLeftMiddle:  true,
+	FingerLeftIndex:   true,
+	FingerLeftThumb:   true,
+	FingerRightThumb:  true,
+	FingerRightIndex:  true,
+	FingerRightMiddle: true,
+	FingerRightRing:   true,
+	FingerRightLittle: true,
+}
+
 // DeviceConfig holds the configuration for connecting to a single device.
 // This mirrors config.DeviceConfig but lives in the driver package to avoid
 // a circular dependency.
@@ -81,12 +114,17 @@ type Driver interface {
 	Connect(ctx context.Context, devices []DeviceConfig) error
 
 	// Scan captures a single fingerprint from the specified device.
+	// If finger is not empty, the driver should light the corresponding LED
+	// indicators before capture and clear them afterward.
 	// The context should carry a 10-second timeout.
-	Scan(ctx context.Context, deviceName string) (*ScanResult, error)
+	Scan(ctx context.Context, deviceName string, finger FingerPosition) (*ScanResult, error)
 
-	// Enroll performs a two-impression enrollment on the specified device.
+	// Enroll performs a multi-impression enrollment on the specified device.
+	// The fingers slice indicates which finger LED to light for each
+	// impression (e.g., ["right_index", "right_index"] for two takes of the
+	// same finger). Nil or empty means no LED guidance.
 	// The context should carry a 10-second timeout per impression.
-	Enroll(ctx context.Context, deviceName, userID, userName string) error
+	Enroll(ctx context.Context, deviceName, userID, userName string, fingers []FingerPosition) error
 
 	// ListDevices returns metadata for all connected devices.
 	ListDevices() []DeviceInfo

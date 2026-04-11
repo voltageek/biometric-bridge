@@ -506,7 +506,8 @@ func (d *BS2Driver) Connect(ctx context.Context, devices []driver.DeviceConfig) 
 }
 
 // Scan captures a single fingerprint from the specified device.
-func (d *BS2Driver) Scan(ctx context.Context, deviceName string) (*driver.ScanResult, error) {
+// The fingerHint parameter is ignored — BS2 devices do not have finger LEDs.
+func (d *BS2Driver) Scan(ctx context.Context, deviceName string, fingerHint driver.FingerPosition) (*driver.ScanResult, error) {
 	dev, err := d.getDevice(deviceName)
 	if err != nil {
 		return nil, err
@@ -536,7 +537,8 @@ func (d *BS2Driver) Scan(ctx context.Context, deviceName string) (*driver.ScanRe
 }
 
 // Enroll performs a two-impression enrollment on the specified device.
-func (d *BS2Driver) Enroll(ctx context.Context, deviceName, userID, userName string) error {
+// The fingers parameter is ignored — BS2 devices do not have finger LEDs.
+func (d *BS2Driver) Enroll(ctx context.Context, deviceName, userID, userName string, fingers []driver.FingerPosition) error {
 	dev, err := d.getDevice(deviceName)
 	if err != nil {
 		return err

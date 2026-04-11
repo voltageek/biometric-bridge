@@ -29,6 +29,7 @@ import (
 var (
 	flagTest   = flag.Bool("test", false, "Run a single scan test and exit (no HTTP server)")
 	flagOutput = flag.String("output", "", "Save captured fingerprint image (PNG if .png extension, raw grayscale otherwise; only with --test)")
+	flagFinger = flag.String("finger", "", "Finger position for LED guidance during --test scan (e.g., right_index, left_thumb)")
 )
 
 func main() {
@@ -208,10 +209,20 @@ func runTestScan(drv driver.Driver, cfg *config.BridgeConfig) error {
 	fmt.Println("  Place your finger on the scanner...")
 	fmt.Println()
 
+	// Determine finger position for LED guidance
+	finger := driver.FingerPosition(*flagFinger)
+	if *flagFinger != "" {
+		if !driver.ValidFingerPositions[finger] {
+			return fmt.Errorf("invalid --finger value %q; valid values: left_little, left_ring, left_middle, left_index, left_thumb, right_thumb, right_index, right_middle, right_ring, right_little", *flagFinger)
+		}
+		fmt.Printf("  LED guidance: %s\n", *flagFinger)
+		fmt.Println()
+	}
+
 	scanCtx, scanCancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer scanCancel()
 
-	result, err := drv.Scan(scanCtx, dev.Name)
+	result, err := drv.Scan(scanCtx, dev.Name, finger)
 	if err != nil {
 		return fmt.Errorf("test scan failed: %w", err)
 	}

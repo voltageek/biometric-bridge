@@ -21,6 +21,11 @@ package realscan
 
 // Capture modes
 #define RS_CAPTURE_FLAT_SINGLE_FINGER  2
+#define RS_CAPTURE_FLAT_TWO_FINGERS    3
+#define RS_CAPTURE_FLAT_LEFT_FOUR      4
+#define RS_CAPTURE_FLAT_RIGHT_FOUR     5
+#define RS_CAPTURE_FLAT_TWO_THUMBS     6
+#define RS_CAPTURE_ROLL_FINGER         1
 
 // Auto-sensitivity
 #define RS_AUTO_SENSITIVITY_HIGH 1
@@ -41,6 +46,35 @@ package realscan
 #define RS_DEVICE_REALSCAN_G10   0x30
 #define RS_DEVICE_REALSCAN_G10F  0x31
 #define RS_DEVICE_REALSCAN_G10I  0x33
+
+// LED mode indices (for RS_SetModeLED)
+#define RS_LED_MODE_ALL             0x00
+#define RS_LED_MODE_LEFT_FINGER4    0x01
+#define RS_LED_MODE_RIGHT_FINGER4   0x02
+#define RS_LED_MODE_TWO_THUMB       0x03
+#define RS_LED_MODE_ROLL            0x04
+
+// LED colors (for RS_SetFingerLED)
+#define RS_LED_OFF    0x00
+#define RS_LED_GREEN  0x01
+#define RS_LED_RED    0x02
+#define RS_LED_YELLOW 0x03
+
+// Finger indices (for RS_SetFingerLED)
+#define RS_FINGER_ALL           0
+#define RS_FINGER_LEFT_LITTLE   1
+#define RS_FINGER_LEFT_RING     2
+#define RS_FINGER_LEFT_MIDDLE   3
+#define RS_FINGER_LEFT_INDEX    4
+#define RS_FINGER_LEFT_THUMB    5
+#define RS_FINGER_RIGHT_THUMB   6
+#define RS_FINGER_RIGHT_INDEX   7
+#define RS_FINGER_RIGHT_MIDDLE  8
+#define RS_FINGER_RIGHT_RING    9
+#define RS_FINGER_RIGHT_LITTLE  10
+#define RS_FINGER_TWO_THUMB     11
+#define RS_FINGER_LEFT_FOUR     12
+#define RS_FINGER_RIGHT_FOUR    13
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Struct declarations matching RS_Data.h
@@ -103,6 +137,15 @@ typedef int (*fn_RS_GetErrString)(int errorCode, char* errorMsg);
 typedef void (*RSHotPlugCallback)(int deviceId, int isConnected);
 typedef int (*fn_RS_RegisterHotPluggingCallback)(RSHotPlugCallback callback);
 
+// LED control
+typedef int (*fn_RS_SetFingerLED)(int deviceHandle, int fingerIndex, int ledColor);
+typedef int (*fn_RS_SetModeLED)(int deviceHandle, int ledIndex, int isOn);
+
+// Extended capture with finger index + LED
+typedef int (*fn_RS_TakeImageDataEx)(int deviceHandle, int timeout,
+                                     int fingerIndex, int withLED,
+                                     unsigned char** imageData, int* width, int* height);
+
 // ──────────────────────────────────────────────────────────────────────────────
 // SDK handle and loaded function pointers
 // ──────────────────────────────────────────────────────────────────────────────
@@ -127,6 +170,9 @@ static fn_RS_StartHotPlugging           p_StartHotPlugging;
 static fn_RS_Beep                       p_Beep;
 static fn_RS_GetErrString               p_GetErrString;
 static fn_RS_RegisterHotPluggingCallback p_RegisterHotPluggingCallback;
+static fn_RS_SetFingerLED               p_SetFingerLED;
+static fn_RS_SetModeLED                 p_SetModeLED;
+static fn_RS_TakeImageDataEx            p_TakeImageDataEx;
 
 // loadSDK dynamically loads the RealScan shared library and resolves symbols.
 static int loadSDK(const char* libPath) {
@@ -151,6 +197,9 @@ static int loadSDK(const char* libPath) {
     p_Beep                = (fn_RS_Beep)dlsym(sdk_handle, "RS_Beep");
     p_GetErrString        = (fn_RS_GetErrString)dlsym(sdk_handle, "RS_GetErrString");
     p_RegisterHotPluggingCallback = (fn_RS_RegisterHotPluggingCallback)dlsym(sdk_handle, "RS_RegisterHotPluggingCallback");
+    p_SetFingerLED        = (fn_RS_SetFingerLED)dlsym(sdk_handle, "RS_SetFingerLED");
+    p_SetModeLED          = (fn_RS_SetModeLED)dlsym(sdk_handle, "RS_SetModeLED");
+    p_TakeImageDataEx     = (fn_RS_TakeImageDataEx)dlsym(sdk_handle, "RS_TakeImageDataEx");
 
     // Required symbols (hot plugging is optional — may not be present in all SDK versions)
     if (!p_InitSDK || !p_ExitSDK || !p_InitDevice || !p_ExitDevice ||
@@ -251,6 +300,26 @@ static int sdk_register_hot_plug_callback(RSHotPlugCallback callback) {
     return p_RegisterHotPluggingCallback(callback);
 }
 
+static int sdk_set_finger_led(int deviceHandle, int fingerIndex, int ledColor) {
+    if (p_SetFingerLED == NULL) return 0; // optional
+    return p_SetFingerLED(deviceHandle, fingerIndex, ledColor);
+}
+
+static int sdk_set_mode_led(int deviceHandle, int ledIndex, int isOn) {
+    if (p_SetModeLED == NULL) return 0; // optional
+    return p_SetModeLED(deviceHandle, ledIndex, isOn);
+}
+
+static int sdk_take_image_data_ex(int deviceHandle, int timeout,
+                                   int fingerIndex, int withLED,
+                                   unsigned char** imageData, int* width, int* height) {
+    if (p_TakeImageDataEx == NULL) {
+        // Fall back to non-ex version if not available
+        return p_TakeImageData(deviceHandle, timeout, imageData, width, height);
+    }
+    return p_TakeImageDataEx(deviceHandle, timeout, fingerIndex, withLED, imageData, width, height);
+}
+
 // ──────────────────────────────────────────────────────────────────────────────
 // C callback forwarders — run on SDK threads, push events to Go.
 // ──────────────────────────────────────────────────────────────────────────────
@@ -289,6 +358,53 @@ const (
 	// Capture timeout for a single scan in milliseconds
 	defaultCaptureTimeoutMS = 10000
 )
+
+// fingerLEDInfo maps a FingerPosition to the SDK's finger index constant
+// and the appropriate mode LED to light.
+type fingerLEDInfo struct {
+	fingerIndex int // RS_FINGER_* constant for RS_SetFingerLED
+	modeLED     int // RS_LED_MODE_* constant for RS_SetModeLED (0 = none)
+}
+
+var fingerLEDMap = map[driver.FingerPosition]fingerLEDInfo{
+	driver.FingerLeftLittle:  {fingerIndex: 1, modeLED: 0x01},  // RS_FINGER_LEFT_LITTLE,  RS_LED_MODE_LEFT_FINGER4
+	driver.FingerLeftRing:    {fingerIndex: 2, modeLED: 0x01},  // RS_FINGER_LEFT_RING,    RS_LED_MODE_LEFT_FINGER4
+	driver.FingerLeftMiddle:  {fingerIndex: 3, modeLED: 0x01},  // RS_FINGER_LEFT_MIDDLE,  RS_LED_MODE_LEFT_FINGER4
+	driver.FingerLeftIndex:   {fingerIndex: 4, modeLED: 0x01},  // RS_FINGER_LEFT_INDEX,   RS_LED_MODE_LEFT_FINGER4
+	driver.FingerLeftThumb:   {fingerIndex: 5, modeLED: 0x03},  // RS_FINGER_LEFT_THUMB,   RS_LED_MODE_TWO_THUMB
+	driver.FingerRightThumb:  {fingerIndex: 6, modeLED: 0x03},  // RS_FINGER_RIGHT_THUMB,  RS_LED_MODE_TWO_THUMB
+	driver.FingerRightIndex:  {fingerIndex: 7, modeLED: 0x02},  // RS_FINGER_RIGHT_INDEX,  RS_LED_MODE_RIGHT_FINGER4
+	driver.FingerRightMiddle: {fingerIndex: 8, modeLED: 0x02},  // RS_FINGER_RIGHT_MIDDLE, RS_LED_MODE_RIGHT_FINGER4
+	driver.FingerRightRing:   {fingerIndex: 9, modeLED: 0x02},  // RS_FINGER_RIGHT_RING,   RS_LED_MODE_RIGHT_FINGER4
+	driver.FingerRightLittle: {fingerIndex: 10, modeLED: 0x02}, // RS_FINGER_RIGHT_LITTLE, RS_LED_MODE_RIGHT_FINGER4
+}
+
+// setFingerLEDs lights the mode LED and the individual finger LED for the
+// given position. Call clearLEDs to turn them off after capture.
+func setFingerLEDs(handle C.int, finger driver.FingerPosition) {
+	info, ok := fingerLEDMap[finger]
+	if !ok {
+		return
+	}
+
+	// Turn on the mode LED (left-4, right-4, thumbs, or roll icon)
+	rc := C.sdk_set_mode_led(handle, C.int(info.modeLED), 1)
+	if rc != C.RS_SUCCESS {
+		slog.Debug("set mode LED failed", "mode", info.modeLED, "error", rsErrString(int(rc)))
+	}
+
+	// Light the specific finger LED in green
+	rc = C.sdk_set_finger_led(handle, C.int(info.fingerIndex), C.RS_LED_GREEN)
+	if rc != C.RS_SUCCESS {
+		slog.Debug("set finger LED failed", "finger", info.fingerIndex, "error", rsErrString(int(rc)))
+	}
+}
+
+// clearLEDs turns off all mode and finger LEDs.
+func clearLEDs(handle C.int) {
+	C.sdk_set_mode_led(handle, C.RS_LED_MODE_ALL, 0)
+	C.sdk_set_finger_led(handle, C.RS_FINGER_ALL, C.RS_LED_OFF)
+}
 
 // RSDriver implements the driver.Driver interface using the Xperix RealScan SDK.
 type RSDriver struct {
@@ -462,7 +578,8 @@ func (d *RSDriver) Connect(ctx context.Context, devices []driver.DeviceConfig) e
 
 // Scan captures a single fingerprint image from the specified device and
 // returns the raw grayscale image data with a NIST quality score.
-func (d *RSDriver) Scan(ctx context.Context, deviceName string) (*driver.ScanResult, error) {
+// If finger is specified, the device LEDs indicate which finger to place.
+func (d *RSDriver) Scan(ctx context.Context, deviceName string, finger driver.FingerPosition) (*driver.ScanResult, error) {
 	dev, err := d.getDevice(deviceName)
 	if err != nil {
 		return nil, err
@@ -484,6 +601,12 @@ func (d *RSDriver) Scan(ctx context.Context, deviceName string) (*driver.ScanRes
 
 	handle := C.int(dev.handle)
 
+	// Light LEDs to guide finger placement
+	if finger != driver.FingerNone {
+		setFingerLEDs(handle, finger)
+		defer clearLEDs(handle)
+	}
+
 	// Set up context cancellation to abort capture
 	done := make(chan struct{})
 	go func() {
@@ -498,8 +621,18 @@ func (d *RSDriver) Scan(ctx context.Context, deviceName string) (*driver.ScanRes
 	var imageData *C.uchar
 	var width, height C.int
 
-	rc := C.sdk_take_image_data(handle, C.int(defaultCaptureTimeoutMS),
-		&imageData, &width, &height)
+	// Use extended capture if a finger hint is available (enables automatic
+	// LED feedback during capture — green on success, red on failure)
+	var rc C.int
+	if finger != driver.FingerNone {
+		info := fingerLEDMap[finger]
+		rc = C.sdk_take_image_data_ex(handle, C.int(defaultCaptureTimeoutMS),
+			C.int(info.fingerIndex), 1, // withLED=true
+			&imageData, &width, &height)
+	} else {
+		rc = C.sdk_take_image_data(handle, C.int(defaultCaptureTimeoutMS),
+			&imageData, &width, &height)
+	}
 	close(done) // stop cancellation goroutine
 
 	if rc != C.RS_SUCCESS {
@@ -550,11 +683,12 @@ func (d *RSDriver) Scan(ctx context.Context, deviceName string) (*driver.ScanRes
 	}, nil
 }
 
-// Enroll performs a two-impression enrollment capture on the specified device.
-// For RealScan, this captures two fingerprint images and returns them via
-// the event channel for server-side processing. The device itself has no
-// enrollment concept — enrollment is purely a capture-twice workflow.
-func (d *RSDriver) Enroll(ctx context.Context, deviceName, userID, userName string) error {
+// Enroll performs a multi-impression enrollment capture on the specified device.
+// For RealScan, this captures fingerprint images and returns them via the event
+// channel for server-side processing. The fingers slice controls which LED to
+// light for each impression. If fingers is nil/empty, defaults to two
+// impressions with no LED guidance.
+func (d *RSDriver) Enroll(ctx context.Context, deviceName, userID, userName string, fingers []driver.FingerPosition) error {
 	dev, err := d.getDevice(deviceName)
 	if err != nil {
 		return err
@@ -576,13 +710,28 @@ func (d *RSDriver) Enroll(ctx context.Context, deviceName, userID, userName stri
 
 	handle := C.int(dev.handle)
 
-	// Capture two impressions
-	for impression := 1; impression <= 2; impression++ {
+	// Default to 2 impressions if no fingers specified
+	numImpressions := len(fingers)
+	if numImpressions == 0 {
+		numImpressions = 2
+		fingers = make([]driver.FingerPosition, numImpressions)
+	}
+
+	// Capture each impression
+	for i := 0; i < numImpressions; i++ {
 		select {
 		case <-ctx.Done():
 			C.sdk_abort_capture(handle)
+			clearLEDs(handle)
 			return ctx.Err()
 		default:
+		}
+
+		finger := fingers[i]
+
+		// Light LEDs for this impression
+		if finger != driver.FingerNone {
+			setFingerLEDs(handle, finger)
 		}
 
 		done := make(chan struct{})
@@ -597,19 +746,32 @@ func (d *RSDriver) Enroll(ctx context.Context, deviceName, userID, userName stri
 		var imageData *C.uchar
 		var width, height C.int
 
-		rc := C.sdk_take_image_data(handle, C.int(defaultCaptureTimeoutMS),
-			&imageData, &width, &height)
+		var rc C.int
+		if finger != driver.FingerNone {
+			info := fingerLEDMap[finger]
+			rc = C.sdk_take_image_data_ex(handle, C.int(defaultCaptureTimeoutMS),
+				C.int(info.fingerIndex), 1,
+				&imageData, &width, &height)
+		} else {
+			rc = C.sdk_take_image_data(handle, C.int(defaultCaptureTimeoutMS),
+				&imageData, &width, &height)
+		}
 		close(done)
+
+		// Clear LEDs after each impression
+		if finger != driver.FingerNone {
+			clearLEDs(handle)
+		}
 
 		if rc != C.RS_SUCCESS {
 			if rc == C.RS_ERR_CAPTURE_ABORTED {
-				return fmt.Errorf("enrollment cancelled on device %q (impression %d)", deviceName, impression)
+				return fmt.Errorf("enrollment cancelled on device %q (impression %d)", deviceName, i+1)
 			}
 			if rc == C.RS_ERR_CAPTURE_TIMEOUT {
-				return fmt.Errorf("enrollment timed out on device %q (impression %d)", deviceName, impression)
+				return fmt.Errorf("enrollment timed out on device %q (impression %d)", deviceName, i+1)
 			}
 			return fmt.Errorf("enrollment scan %d failed on device %q: %s (code %d)",
-				impression, deviceName, rsErrString(int(rc)), rc)
+				i+1, deviceName, rsErrString(int(rc)), rc)
 		}
 
 		// Free SDK memory — for enrollment the server will request images
@@ -621,7 +783,8 @@ func (d *RSDriver) Enroll(ctx context.Context, deviceName, userID, userName stri
 
 		slog.Info("enrollment impression captured",
 			"device", deviceName,
-			"impression", impression,
+			"impression", i+1,
+			"finger", string(finger),
 			"userID", userID,
 		)
 	}

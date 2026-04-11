@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
@@ -14,9 +15,10 @@ import (
 
 // enrollRequest is the JSON body for POST /api/enroll.
 type enrollRequest struct {
-	DeviceID string `json:"deviceId"`
-	UserID   string `json:"userId"`
-	UserName string `json:"userName"`
+	DeviceID string   `json:"deviceId"`
+	UserID   string   `json:"userId"`
+	UserName string   `json:"userName"`
+	Fingers  []string `json:"fingers,omitempty"` // Optional: finger position per impression for LED guidance
 }
 
 // NewEnrollHandler returns a handler for POST /api/enroll (T014).
@@ -40,6 +42,18 @@ func NewEnrollHandler(d driver.Driver, reg *device.Registry) http.HandlerFunc {
 			return
 		}
 
+		// Validate optional finger positions
+		var fingers []driver.FingerPosition
+		for i, f := range req.Fingers {
+			fp := driver.FingerPosition(f)
+			if f != "" && !driver.ValidFingerPositions[fp] {
+				writeError(w, http.StatusBadRequest,
+					fmt.Sprintf("invalid request: unrecognized finger position at index %d", i))
+				return
+			}
+			fingers = append(fingers, fp)
+		}
+
 		// Acquire device lock
 		if err := reg.Acquire(req.DeviceID); err != nil {
 			var devErr *device.DeviceError
@@ -57,7 +71,7 @@ func NewEnrollHandler(d driver.Driver, reg *device.Registry) http.HandlerFunc {
 		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 		defer cancel()
 
-		if err := d.Enroll(ctx, req.DeviceID, req.UserID, req.UserName); err != nil {
+		if err := d.Enroll(ctx, req.DeviceID, req.UserID, req.UserName, fingers); err != nil {
 			slog.Warn("enroll failed", "device", req.DeviceID, "userId", req.UserID, "error", err)
 			if ctx.Err() == context.DeadlineExceeded {
 				writeError(w, http.StatusGatewayTimeout, "enroll timeout")

@@ -4,6 +4,9 @@ biometric-bridge
 /gentoken
 *.raw
 
+# Test scan artifacts
+/scan.*
+
 # Go
 *.exe
 *.exe~
