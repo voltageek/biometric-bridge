@@ -73,7 +73,7 @@ func NewEnrollHandler(d driver.Driver, reg *device.Registry) http.HandlerFunc {
 
 		if err := d.Enroll(ctx, req.DeviceID, req.UserID, req.UserName, fingers); err != nil {
 			slog.Warn("enroll failed", "device", req.DeviceID, "userId", req.UserID, "error", err)
-			if ctx.Err() == context.DeadlineExceeded {
+			if ctx.Err() == context.DeadlineExceeded || errors.Is(err, driver.ErrScanTimeout) {
 				writeError(w, http.StatusGatewayTimeout, "enroll timeout")
 				return
 			}

@@ -740,7 +740,7 @@ func (d *RSDriver) Scan(ctx context.Context, deviceName string, finger driver.Fi
 			return nil, fmt.Errorf("scan cancelled on device %q", deviceName)
 		}
 		if rc == C.RS_ERR_CAPTURE_TIMEOUT {
-			return nil, fmt.Errorf("scan timed out on device %q", deviceName)
+			return nil, fmt.Errorf("%w on device %q", driver.ErrScanTimeout, deviceName)
 		}
 		return nil, fmt.Errorf("scan failed on device %q: %s (code %d)",
 			deviceName, rsErrString(int(rc)), rc)
@@ -868,7 +868,7 @@ func (d *RSDriver) SlapScan(ctx context.Context, deviceName string, mode driver.
 			return nil, fmt.Errorf("slap scan cancelled on device %q", deviceName)
 		}
 		if rc == C.RS_ERR_CAPTURE_TIMEOUT {
-			return nil, fmt.Errorf("slap scan timed out on device %q", deviceName)
+			return nil, fmt.Errorf("%w on device %q (slap)", driver.ErrScanTimeout, deviceName)
 		}
 		return nil, fmt.Errorf("slap scan failed on device %q: %s (code %d)",
 			deviceName, rsErrString(int(rc)), rc)
@@ -1043,7 +1043,7 @@ func (d *RSDriver) Enroll(ctx context.Context, deviceName, userID, userName stri
 				return fmt.Errorf("enrollment cancelled on device %q (impression %d)", deviceName, i+1)
 			}
 			if rc == C.RS_ERR_CAPTURE_TIMEOUT {
-				return fmt.Errorf("enrollment timed out on device %q (impression %d)", deviceName, i+1)
+				return fmt.Errorf("%w on device %q (enrollment impression %d)", driver.ErrScanTimeout, deviceName, i+1)
 			}
 			return fmt.Errorf("enrollment scan %d failed on device %q: %s (code %d)",
 				i+1, deviceName, rsErrString(int(rc)), rc)

@@ -166,7 +166,7 @@
 
 - [x] T025 [P] Verify all error responses follow the `{"error":"..."}` JSON format across all handlers in `biometric-bridge/internal/api/`
 - [x] T026 [P] Add structured log statements at key points across all packages: config load, key load, device connect/disconnect, scan start/complete, enroll start/complete, auth reject, event stream open/close, shutdown steps
-- [ ] T027 Validate end-to-end flow using quickstart.md steps: set up BS2 shared library, generate keypair, configure bridge, build with `-tags bs2`, start bridge, generate test JWT, test all endpoints (`/healthz`, `/api/devices`, `/api/scan`, `/api/enroll`, `/events`)
+- [x] T027 Validate end-to-end flow using quickstart.md steps: set up BS2 shared library, generate keypair, configure bridge, build with `-tags bs2`, start bridge, generate test JWT, test all endpoints (`/healthz`, `/api/devices`, `/api/scan`, `/api/enroll`, `/events`)
 - [x] T028 [P] Review all handlers for consistent Content-Type `application/json` headers and CORS header application
 
 ---

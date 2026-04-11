@@ -59,7 +59,7 @@ func NewScanHandler(d driver.Driver, reg *device.Registry) http.HandlerFunc {
 		result, err := d.Scan(ctx, req.DeviceID, finger)
 		if err != nil {
 			slog.Warn("scan failed", "device", req.DeviceID, "error", err)
-			if ctx.Err() == context.DeadlineExceeded {
+			if ctx.Err() == context.DeadlineExceeded || errors.Is(err, driver.ErrScanTimeout) {
 				writeError(w, http.StatusGatewayTimeout, "scan timeout")
 				return
 			}

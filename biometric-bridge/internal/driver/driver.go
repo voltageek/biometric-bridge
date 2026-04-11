@@ -12,6 +12,10 @@ import (
 // slap capture (e.g., the BS2 driver).
 var ErrSlapNotSupported = errors.New("slap capture not supported by this driver")
 
+// ErrScanTimeout is returned when the SDK's internal capture timeout fires
+// before a finger is detected. API handlers should map this to HTTP 504.
+var ErrScanTimeout = errors.New("scan timed out")
+
 // FingerPosition identifies which finger(s) should be scanned. When passed to
 // Scan or Enroll, drivers that support LED indicators will light up the
 // corresponding mode and finger LEDs on the device before capture.

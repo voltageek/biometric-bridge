@@ -78,7 +78,7 @@ func NewSlapScanHandler(d driver.Driver, reg *device.Registry) http.HandlerFunc 
 				writeError(w, http.StatusNotImplemented, "slap capture not supported by this driver")
 				return
 			}
-			if ctx.Err() == context.DeadlineExceeded {
+			if ctx.Err() == context.DeadlineExceeded || errors.Is(err, driver.ErrScanTimeout) {
 				writeError(w, http.StatusGatewayTimeout, "slap scan timeout")
 				return
 			}
