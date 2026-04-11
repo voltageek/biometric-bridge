@@ -1,0 +1,25 @@
+# Biometric Bridge — RealScan G10 Test Configuration
+# Usage: BRIDGE_CONFIG=config-realscan-test.yaml ./bridge
+
+bridge:
+  listen:          "127.0.0.1:7070"
+  allowed_origin:  "http://localhost:3000"
+  public_key_file: "./test-public.pem"
+  token_issuer:    "test"
+  token_audience:  "biometric-bridge"
+  clock_skew:      "300s"                    # Generous skew for testing
+
+devices:
+  - name: "g10"
+
+events:
+  reconnect_base: "1s"
+  reconnect_cap:  "30s"
+
+log:
+  level: "debug"                             # Verbose for testing
+
+driver: realscan
+
+realscan:
+  lib_path: "../RealScan_SDK_for_Linux_v2.2.0.2470/Lib/libRS_SDK_x86_64.so.2.2.0.2470"

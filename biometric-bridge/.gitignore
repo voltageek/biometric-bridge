@@ -1,5 +1,8 @@
-# Binary
+# Binaries
 biometric-bridge
+/bridge
+/gentoken
+*.raw
 
 # Go
 *.exe

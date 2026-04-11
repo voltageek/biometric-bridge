@@ -60,12 +60,12 @@ typedef struct {
 
 // SDK lifecycle
 typedef int (*fn_RS_InitSDK)(const char* configDir, int options, int* numOfDevice);
-typedef int (*fn_RS_ExitSDK)(void);
+typedef int (*fn_RS_ExitSDK)(void);  // mangled as _Z10RS_ExitSDKv in the .so
 
 // Device lifecycle
 typedef int (*fn_RS_InitDevice)(int deviceIndex, int* deviceHandle);
 typedef int (*fn_RS_ExitDevice)(int deviceHandle);
-typedef int (*fn_RS_GetDeviceCount)(int* numOfDevice);
+typedef int (*fn_RS_GetNumOfDevice)(int* numOfDevice);
 typedef int (*fn_RS_GetDeviceInfo)(int deviceHandle, RSDeviceInfo* deviceInfo);
 
 // Capture mode
@@ -91,13 +91,13 @@ typedef int (*fn_RS_SetPreProcessing)(int deviceHandle, int mode);
 
 // Hot plugging
 typedef int (*fn_RS_StartHotPlugging)(void);
-typedef int (*fn_RS_StopHotPlugging)(void);
+// Note: RS_StopHotPlugging does not exist in the SDK binary
 
 // Beep
 typedef int (*fn_RS_Beep)(int deviceHandle, int beepPattern);
 
-// Error string
-typedef int (*fn_RS_GetErrStringChar)(int errorCode, char* errorMsg);
+// Error string — exported as RS_GetErrString (not RS_GetErrStringChar)
+typedef int (*fn_RS_GetErrString)(int errorCode, char* errorMsg);
 
 // Hot plug callback: void(int deviceId, int isConnected) — using int for bool on Linux
 typedef void (*RSHotPlugCallback)(int deviceId, int isConnected);
@@ -113,7 +113,7 @@ static fn_RS_InitSDK                    p_InitSDK;
 static fn_RS_ExitSDK                    p_ExitSDK;
 static fn_RS_InitDevice                 p_InitDevice;
 static fn_RS_ExitDevice                 p_ExitDevice;
-static fn_RS_GetDeviceCount             p_GetDeviceCount;
+static fn_RS_GetNumOfDevice             p_GetNumOfDevice;
 static fn_RS_GetDeviceInfo              p_GetDeviceInfo;
 static fn_RS_SetCaptureMode             p_SetCaptureMode;
 static fn_RS_TakeImageData              p_TakeImageData;
@@ -124,9 +124,8 @@ static fn_RS_IsCapturing                p_IsCapturing;
 static fn_RS_SetAutomaticCalibrate      p_SetAutomaticCalibrate;
 static fn_RS_SetPreProcessing           p_SetPreProcessing;
 static fn_RS_StartHotPlugging           p_StartHotPlugging;
-static fn_RS_StopHotPlugging            p_StopHotPlugging;
 static fn_RS_Beep                       p_Beep;
-static fn_RS_GetErrStringChar           p_GetErrStringChar;
+static fn_RS_GetErrString               p_GetErrString;
 static fn_RS_RegisterHotPluggingCallback p_RegisterHotPluggingCallback;
 
 // loadSDK dynamically loads the RealScan shared library and resolves symbols.
@@ -135,10 +134,10 @@ static int loadSDK(const char* libPath) {
     if (!sdk_handle) return -1;
 
     p_InitSDK             = (fn_RS_InitSDK)dlsym(sdk_handle, "RS_InitSDK");
-    p_ExitSDK             = (fn_RS_ExitSDK)dlsym(sdk_handle, "RS_ExitSDK");
+    p_ExitSDK             = (fn_RS_ExitSDK)dlsym(sdk_handle, "_Z10RS_ExitSDKv");
     p_InitDevice          = (fn_RS_InitDevice)dlsym(sdk_handle, "RS_InitDevice");
     p_ExitDevice          = (fn_RS_ExitDevice)dlsym(sdk_handle, "RS_ExitDevice");
-    p_GetDeviceCount      = (fn_RS_GetDeviceCount)dlsym(sdk_handle, "RS_GetDeviceCount");
+    p_GetNumOfDevice      = (fn_RS_GetNumOfDevice)dlsym(sdk_handle, "RS_GetNumOfDevice");
     p_GetDeviceInfo       = (fn_RS_GetDeviceInfo)dlsym(sdk_handle, "RS_GetDeviceInfo");
     p_SetCaptureMode      = (fn_RS_SetCaptureMode)dlsym(sdk_handle, "RS_SetCaptureMode");
     p_TakeImageData       = (fn_RS_TakeImageData)dlsym(sdk_handle, "RS_TakeImageData");
@@ -149,14 +148,13 @@ static int loadSDK(const char* libPath) {
     p_SetAutomaticCalibrate = (fn_RS_SetAutomaticCalibrate)dlsym(sdk_handle, "RS_SetAutomaticCalibrate");
     p_SetPreProcessing    = (fn_RS_SetPreProcessing)dlsym(sdk_handle, "RS_SetPreProcessing");
     p_StartHotPlugging    = (fn_RS_StartHotPlugging)dlsym(sdk_handle, "RS_StartHotPlugging");
-    p_StopHotPlugging     = (fn_RS_StopHotPlugging)dlsym(sdk_handle, "RS_StopHotPlugging");
     p_Beep                = (fn_RS_Beep)dlsym(sdk_handle, "RS_Beep");
-    p_GetErrStringChar    = (fn_RS_GetErrStringChar)dlsym(sdk_handle, "RS_GetErrStringChar");
+    p_GetErrString        = (fn_RS_GetErrString)dlsym(sdk_handle, "RS_GetErrString");
     p_RegisterHotPluggingCallback = (fn_RS_RegisterHotPluggingCallback)dlsym(sdk_handle, "RS_RegisterHotPluggingCallback");
 
     // Required symbols (hot plugging is optional — may not be present in all SDK versions)
     if (!p_InitSDK || !p_ExitSDK || !p_InitDevice || !p_ExitDevice ||
-        !p_GetDeviceCount || !p_GetDeviceInfo || !p_SetCaptureMode ||
+        !p_GetNumOfDevice || !p_GetDeviceInfo || !p_SetCaptureMode ||
         !p_TakeImageData || !p_FreeImageData || !p_GetQualityScore ||
         !p_AbortCapture || !p_IsCapturing || !p_SetAutomaticCalibrate) {
         dlclose(sdk_handle);
@@ -188,7 +186,7 @@ static int sdk_exit_device(int deviceHandle) {
 }
 
 static int sdk_get_device_count(int* numOfDevice) {
-    return p_GetDeviceCount(numOfDevice);
+    return p_GetNumOfDevice(numOfDevice);
 }
 
 static int sdk_get_device_info(int deviceHandle, RSDeviceInfo* info) {
@@ -231,8 +229,8 @@ static int sdk_start_hot_plugging(void) {
 }
 
 static int sdk_stop_hot_plugging(void) {
-    if (p_StopHotPlugging == NULL) return 0;
-    return p_StopHotPlugging();
+    // RS_StopHotPlugging does not exist in this SDK version — no-op
+    return 0;
 }
 
 static int sdk_beep(int deviceHandle, int beepPattern) {
@@ -241,11 +239,11 @@ static int sdk_beep(int deviceHandle, int beepPattern) {
 }
 
 static int sdk_get_err_string(int errorCode, char* errorMsg) {
-    if (p_GetErrStringChar == NULL) {
+    if (p_GetErrString == NULL) {
         errorMsg[0] = '\0';
         return -1;
     }
-    return p_GetErrStringChar(errorCode, errorMsg);
+    return p_GetErrString(errorCode, errorMsg);
 }
 
 static int sdk_register_hot_plug_callback(RSHotPlugCallback callback) {

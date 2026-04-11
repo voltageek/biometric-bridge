@@ -93,6 +93,30 @@ func Load(path string) (*BridgeConfig, error) {
 	return &cfg, nil
 }
 
+// LoadDriverOnly reads and parses a YAML config file with relaxed validation.
+// It only validates driver, device, and log settings — skipping bridge auth
+// fields (public_key_file, token_issuer, allowed_origin). This is intended for
+// --test mode where the HTTP server and JWT auth are not started.
+func LoadDriverOnly(path string) (*BridgeConfig, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read config: %w", err)
+	}
+
+	var cfg BridgeConfig
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return nil, fmt.Errorf("parse config: %w", err)
+	}
+
+	applyDefaults(&cfg)
+
+	if err := validateDriverOnly(&cfg); err != nil {
+		return nil, fmt.Errorf("invalid config: %w", err)
+	}
+
+	return &cfg, nil
+}
+
 // ClockSkewDuration parses the clock_skew field as a time.Duration.
 func (b *BridgeSettings) ClockSkewDuration() time.Duration {
 	d, _ := time.ParseDuration(b.ClockSkew)
@@ -210,6 +234,74 @@ func validate(cfg *BridgeConfig) error {
 	}
 	if _, err := time.ParseDuration(cfg.Events.ReconnectCap); err != nil {
 		return fmt.Errorf("events.reconnect_cap: invalid duration: %w", err)
+	}
+
+	// Log
+	switch cfg.Log.Level {
+	case "error", "info", "debug":
+		// valid
+	default:
+		return fmt.Errorf("log.level: must be \"error\", \"info\", or \"debug\", got %q", cfg.Log.Level)
+	}
+
+	return nil
+}
+
+// validateDriverOnly validates only driver, device, and log settings.
+// Bridge auth fields are not checked.
+func validateDriverOnly(cfg *BridgeConfig) error {
+	// Driver
+	switch cfg.Driver {
+	case "bs2":
+		if cfg.BS2 == nil {
+			return fmt.Errorf("bs2 section is required when driver is \"bs2\"")
+		}
+		if cfg.BS2.LibPath == "" {
+			return fmt.Errorf("bs2.lib_path is required")
+		}
+	case "gsdk":
+		if cfg.GSDK == nil {
+			return fmt.Errorf("gsdk section is required when driver is \"gsdk\"")
+		}
+		if cfg.GSDK.GatewayAddr == "" {
+			return fmt.Errorf("gsdk.gateway_addr is required")
+		}
+	case "realscan":
+		if cfg.RealScan == nil {
+			return fmt.Errorf("realscan section is required when driver is \"realscan\"")
+		}
+		if cfg.RealScan.LibPath == "" {
+			return fmt.Errorf("realscan.lib_path is required")
+		}
+	case "":
+		return fmt.Errorf("driver is required (\"bs2\", \"gsdk\", or \"realscan\")")
+	default:
+		return fmt.Errorf("driver: unknown driver %q (expected \"bs2\", \"gsdk\", or \"realscan\")", cfg.Driver)
+	}
+
+	// Devices
+	if len(cfg.Devices) == 0 {
+		return fmt.Errorf("at least one device is required")
+	}
+	usbDriver := cfg.Driver == "realscan"
+	names := make(map[string]bool, len(cfg.Devices))
+	for i, d := range cfg.Devices {
+		prefix := fmt.Sprintf("devices[%d]", i)
+		if d.Name == "" {
+			return fmt.Errorf("%s.name is required", prefix)
+		}
+		if names[d.Name] {
+			return fmt.Errorf("%s.name: duplicate device name %q", prefix, d.Name)
+		}
+		names[d.Name] = true
+		if !usbDriver {
+			if d.Addr == "" {
+				return fmt.Errorf("%s.addr is required", prefix)
+			}
+			if d.Port < 1 || d.Port > 65535 {
+				return fmt.Errorf("%s.port: must be 1–65535, got %d", prefix, d.Port)
+			}
+		}
 	}
 
 	// Log
