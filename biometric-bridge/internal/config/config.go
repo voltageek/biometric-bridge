@@ -16,13 +16,14 @@ import (
 
 // BridgeConfig is the top-level configuration loaded from config.yaml.
 type BridgeConfig struct {
-	Bridge  BridgeSettings `yaml:"bridge"`
-	Devices []DeviceConfig `yaml:"devices"`
-	Events  EventSettings  `yaml:"events"`
-	Log     LogSettings    `yaml:"log"`
-	Driver  string         `yaml:"driver"`
-	GSDK    *GSDKSettings  `yaml:"gsdk,omitempty"`
-	BS2     *BS2Settings   `yaml:"bs2,omitempty"`
+	Bridge   BridgeSettings    `yaml:"bridge"`
+	Devices  []DeviceConfig    `yaml:"devices"`
+	Events   EventSettings     `yaml:"events"`
+	Log      LogSettings       `yaml:"log"`
+	Driver   string            `yaml:"driver"`
+	GSDK     *GSDKSettings     `yaml:"gsdk,omitempty"`
+	BS2      *BS2Settings      `yaml:"bs2,omitempty"`
+	RealScan *RealScanSettings `yaml:"realscan,omitempty"`
 }
 
 // BridgeSettings holds HTTP server and authentication settings.
@@ -62,6 +63,11 @@ type GSDKSettings struct {
 
 // BS2Settings holds BioStar 2 Device SDK configuration.
 type BS2Settings struct {
+	LibPath string `yaml:"lib_path"`
+}
+
+// RealScanSettings holds RealScan SDK configuration for USB fingerprint readers.
+type RealScanSettings struct {
 	LibPath string `yaml:"lib_path"`
 }
 
@@ -160,16 +166,24 @@ func validate(cfg *BridgeConfig) error {
 		if cfg.GSDK.GatewayAddr == "" {
 			return fmt.Errorf("gsdk.gateway_addr is required")
 		}
+	case "realscan":
+		if cfg.RealScan == nil {
+			return fmt.Errorf("realscan section is required when driver is \"realscan\"")
+		}
+		if cfg.RealScan.LibPath == "" {
+			return fmt.Errorf("realscan.lib_path is required")
+		}
 	case "":
-		return fmt.Errorf("driver is required (\"bs2\" or \"gsdk\")")
+		return fmt.Errorf("driver is required (\"bs2\", \"gsdk\", or \"realscan\")")
 	default:
-		return fmt.Errorf("driver: unknown driver %q (expected \"bs2\" or \"gsdk\")", cfg.Driver)
+		return fmt.Errorf("driver: unknown driver %q (expected \"bs2\", \"gsdk\", or \"realscan\")", cfg.Driver)
 	}
 
 	// Devices
 	if len(cfg.Devices) == 0 {
 		return fmt.Errorf("at least one device is required")
 	}
+	usbDriver := cfg.Driver == "realscan" // USB drivers don't need addr/port
 	names := make(map[string]bool, len(cfg.Devices))
 	for i, d := range cfg.Devices {
 		prefix := fmt.Sprintf("devices[%d]", i)
@@ -180,11 +194,13 @@ func validate(cfg *BridgeConfig) error {
 			return fmt.Errorf("%s.name: duplicate device name %q", prefix, d.Name)
 		}
 		names[d.Name] = true
-		if d.Addr == "" {
-			return fmt.Errorf("%s.addr is required", prefix)
-		}
-		if d.Port < 1 || d.Port > 65535 {
-			return fmt.Errorf("%s.port: must be 1–65535, got %d", prefix, d.Port)
+		if !usbDriver {
+			if d.Addr == "" {
+				return fmt.Errorf("%s.addr is required", prefix)
+			}
+			if d.Port < 1 || d.Port > 65535 {
+				return fmt.Errorf("%s.port: must be 1–65535, got %d", prefix, d.Port)
+			}
 		}
 	}
 

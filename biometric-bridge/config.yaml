@@ -22,7 +22,7 @@ events:
 log:
   level: "info"                              # "error" | "info" | "debug"
 
-driver: bs2                                  # "bs2" or "gsdk"
+driver: bs2                                  # "bs2", "gsdk", or "realscan"
 
 bs2:
   lib_path: "./biostar-device-sdk/Lib/Linux/lib/x64/libBS_SDK_V2.so"
@@ -30,3 +30,10 @@ bs2:
 # gsdk:                                      # Uncomment when using G-SDK driver
 #   gateway_addr:   "127.0.0.1:4000"
 #   gateway_ca_cert: "./gateway-ca.pem"
+
+# realscan:                                  # Uncomment when using RealScan G10
+#   lib_path: "./RealScan_SDK_for_Linux_v2.2.0.2470/Lib/libRS_SDK.so.2.2.0.2470"
+# NOTE: For realscan driver, devices only need a "name" field.
+# addr/port are ignored (USB auto-discovery). Example:
+#   devices:
+#     - name: "g10"

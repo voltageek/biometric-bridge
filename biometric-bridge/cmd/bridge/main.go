@@ -191,6 +191,10 @@ func initDriver(cfg *config.BridgeConfig) (driver.Driver, error) {
 		if cfg.GSDK != nil {
 			libPath = cfg.GSDK.GatewayAddr
 		}
+	case "realscan":
+		if cfg.RealScan != nil {
+			libPath = cfg.RealScan.LibPath
+		}
 	}
 
 	return factory(libPath)
