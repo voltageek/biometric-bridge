@@ -545,6 +545,8 @@ func (d *RSDriver) Scan(ctx context.Context, deviceName string) (*driver.ScanRes
 	return &driver.ScanResult{
 		Template: goImageData,
 		Quality:  quality,
+		Width:    int(width),
+		Height:   int(height),
 	}, nil
 }
 

@@ -8,10 +8,13 @@ import (
 	"encoding/hex"
 	"flag"
 	"fmt"
+	"image"
+	"image/png"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -25,7 +28,7 @@ import (
 
 var (
 	flagTest   = flag.Bool("test", false, "Run a single scan test and exit (no HTTP server)")
-	flagOutput = flag.String("output", "", "Save captured image to file (raw grayscale, only with --test)")
+	flagOutput = flag.String("output", "", "Save captured fingerprint image (PNG if .png extension, raw grayscale otherwise; only with --test)")
 )
 
 func main() {
@@ -217,6 +220,7 @@ func runTestScan(drv driver.Driver, cfg *config.BridgeConfig) error {
 	fmt.Println("  ─── SCAN RESULT ───")
 	fmt.Println()
 	fmt.Printf("  Quality:    %d (NIST)\n", result.Quality)
+	fmt.Printf("  Dimensions: %d x %d pixels\n", result.Width, result.Height)
 	fmt.Printf("  Image size: %d bytes\n", len(result.Template))
 
 	// Show hex preview (first 64 bytes)
@@ -230,7 +234,7 @@ func runTestScan(drv driver.Driver, cfg *config.BridgeConfig) error {
 
 	// Save to file if requested
 	if *flagOutput != "" {
-		if err := os.WriteFile(*flagOutput, result.Template, 0644); err != nil {
+		if err := saveImage(*flagOutput, result); err != nil {
 			return fmt.Errorf("failed to save image: %w", err)
 		}
 		fmt.Printf("  Image saved to: %s\n", *flagOutput)
@@ -239,6 +243,40 @@ func runTestScan(drv driver.Driver, cfg *config.BridgeConfig) error {
 
 	fmt.Println("  Test complete.")
 	return nil
+}
+
+// saveImage writes a fingerprint image to disk. If the path ends in ".png",
+// it encodes a proper PNG from the raw 8-bit grayscale pixels. Otherwise it
+// writes the raw bytes directly.
+func saveImage(path string, result *driver.ScanResult) error {
+	if strings.HasSuffix(strings.ToLower(path), ".png") {
+		return savePNG(path, result)
+	}
+	return os.WriteFile(path, result.Template, 0644)
+}
+
+// savePNG encodes raw 8-bit grayscale pixel data as a PNG file.
+func savePNG(path string, result *driver.ScanResult) error {
+	if result.Width == 0 || result.Height == 0 {
+		return fmt.Errorf("cannot write PNG: image dimensions unknown (width=%d, height=%d)", result.Width, result.Height)
+	}
+
+	img := &image.Gray{
+		Pix:    result.Template,
+		Stride: result.Width,
+		Rect:   image.Rect(0, 0, result.Width, result.Height),
+	}
+
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	if err := png.Encode(f, img); err != nil {
+		return err
+	}
+	return f.Close()
 }
 
 // setupLogging configures slog with JSON output at the specified level.
