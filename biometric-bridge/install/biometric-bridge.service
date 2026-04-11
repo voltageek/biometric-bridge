@@ -1,0 +1,25 @@
+[Unit]
+Description=Biometric Bridge — Suprema fingerprint reader gateway
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/biometric-bridge
+WorkingDirectory=/etc/biometric-bridge
+Restart=on-failure
+RestartSec=5s
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/etc/biometric-bridge
+PrivateTmp=true
+
+# Logging (stdout/stderr captured by journald)
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=biometric-bridge
+
+[Install]
+WantedBy=multi-user.target

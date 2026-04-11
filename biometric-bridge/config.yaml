@@ -1,0 +1,32 @@
+# Biometric Bridge Configuration
+# See specs/001-biometric-bridge/quickstart.md for full setup instructions.
+
+bridge:
+  listen:          "127.0.0.1:7070"
+  allowed_origin:  "http://localhost:3000"   # Your web app's origin
+  public_key_file: "./bridge-public.pem"     # ECDSA P-256 public key (PEM)
+  token_issuer:    "dev-server"              # Must match JWT iss claim
+  token_audience:  "biometric-bridge"        # Must match JWT aud claim
+  clock_skew:      "30s"                     # Allowed clock skew for JWT exp
+
+devices:
+  - name:    "reception"
+    addr:    "192.168.0.110"
+    port:    51211
+    use_ssl: false
+
+events:
+  reconnect_base: "1s"                       # Initial reconnect wait
+  reconnect_cap:  "120s"                     # Maximum reconnect wait
+
+log:
+  level: "info"                              # "error" | "info" | "debug"
+
+driver: bs2                                  # "bs2" or "gsdk"
+
+bs2:
+  lib_path: "./biostar-device-sdk/Lib/Linux/lib/x64/libBS_SDK_V2.so"
+
+# gsdk:                                      # Uncomment when using G-SDK driver
+#   gateway_addr:   "127.0.0.1:4000"
+#   gateway_ca_cert: "./gateway-ca.pem"
