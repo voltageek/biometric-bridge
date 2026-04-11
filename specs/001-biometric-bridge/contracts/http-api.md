@@ -117,6 +117,76 @@ Failure to authenticate returns `401 Unauthorized`.
 
 ---
 
+### `POST /api/slap-scan`
+
+**Auth**: JWT required  
+**Purpose**: Capture multiple fingers simultaneously on readers that support a flat-bed platen (e.g., RealScan G10). Returns the full slap image and individually segmented finger images with quality scores.
+
+**Request**:
+```json
+{
+  "deviceId": "reception",
+  "mode": "right_four"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `deviceId` | string | yes | Device name from config |
+| `mode` | string | yes | Capture group: `left_four`, `right_four`, or `two_thumbs` |
+
+**Response**: `200 OK`
+```json
+{
+  "mode": "right_four",
+  "slapImage": "SGVsbG8gV29ybGQ=",
+  "slapWidth": 1600,
+  "slapHeight": 1500,
+  "fingers": [
+    {
+      "finger": "right_index",
+      "image": "SGVsbG8gV29ybGQ=",
+      "width": 300,
+      "height": 400,
+      "quality": 78
+    },
+    {
+      "finger": "right_middle",
+      "image": "SGVsbG8gV29ybGQ=",
+      "width": 300,
+      "height": 400,
+      "quality": 82
+    }
+  ]
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `mode` | string | Echo of the requested capture mode |
+| `slapImage` | string | Base64-encoded full slap image (raw 8-bit grayscale) |
+| `slapWidth` | integer | Full slap image width in pixels |
+| `slapHeight` | integer | Full slap image height in pixels |
+| `fingers` | array | Individually segmented finger captures |
+| `fingers[].finger` | string | Finger position (e.g., `"right_index"`); present in every element but may be an empty string (`""`) when the SDK could not identify the finger during segmentation |
+| `fingers[].image` | string | Base64-encoded raw 8-bit grayscale image for this finger |
+| `fingers[].width` | integer | Image width in pixels |
+| `fingers[].height` | integer | Image height in pixels |
+| `fingers[].quality` | integer | 0–100 NIST quality score |
+
+**Errors**:
+| Status | Body | Condition |
+|--------|------|-----------|
+| 400 | `{"error": "invalid request: ..."}` | Missing fields, malformed JSON, or unrecognized `mode` |
+| 401 | `{"error": "unauthorized"}` | Missing/invalid/expired JWT |
+| 409 | `{"error": "device busy"}` | Another scan/enroll in progress on this device |
+| 501 | `{"error": "slap capture not supported by this driver"}` | Active driver does not support multi-finger capture |
+| 502 | `{"error": "driver error: ..."}` | SDK call failed |
+| 503 | `{"error": "device unavailable: reception"}` | Device not connected or reconnecting |
+| 504 | `{"error": "slap scan timeout"}` | User did not place fingers within 20 seconds |
+
+---
+
 ### `POST /api/scan`
 
 **Auth**: JWT required  
@@ -175,9 +245,10 @@ Content-Type is always `application/json`.
 | Code | Meaning | Used By |
 |------|---------|---------|
 | 200 | Success | All endpoints on success |
-| 400 | Malformed request body | `/api/enroll`, `/api/scan` |
+| 400 | Malformed request body | `/api/enroll`, `/api/scan`, `/api/slap-scan` |
 | 401 | Missing, invalid, or expired JWT | All authenticated endpoints |
-| 409 | Device busy (operation in progress) | `/api/enroll`, `/api/scan` |
-| 502 | Driver-level failure (SDK error) | `/api/enroll`, `/api/scan` |
-| 503 | Device not connected | `/api/enroll`, `/api/scan` |
-| 504 | Scan timeout (finger not placed) | `/api/enroll`, `/api/scan` |
+| 409 | Device busy (operation in progress) | `/api/enroll`, `/api/scan`, `/api/slap-scan` |
+| 501 | Feature not supported by driver | `/api/slap-scan` |
+| 502 | Driver-level failure (SDK error) | `/api/enroll`, `/api/scan`, `/api/slap-scan` |
+| 503 | Device not connected | `/api/enroll`, `/api/scan`, `/api/slap-scan` |
+| 504 | Scan timeout (finger not placed) | `/api/enroll`, `/api/scan`, `/api/slap-scan` |
