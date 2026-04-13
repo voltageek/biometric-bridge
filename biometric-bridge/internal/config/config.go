@@ -53,6 +53,7 @@ type EventSettings struct {
 // LogSettings holds logging configuration.
 type LogSettings struct {
 	Level string `yaml:"level"`
+	File  string `yaml:"file"` // Log file path for persistent storage
 }
 
 // GSDKSettings holds G-SDK driver configuration.
