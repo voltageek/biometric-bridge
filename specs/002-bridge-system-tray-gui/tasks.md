@@ -138,6 +138,9 @@
 - [ ] T049 Implement scrollable event list container in `internal/tray/ui.go`
 - [ ] T050 Implement filter icon and severity filter dropdown in `internal/tray/ui.go`
 - [ ] T051 Implement event filter logic in `internal/tray/event_subscriber.go`
+ - [ ] T107 Define EventType enum (Scan, Enrollment, Connection, System, Error) in `internal/tray/event_subscriber.go` and data-model.md
+ - [ ] T108 Implement event type filter UI in `internal/tray/ui.go`
+ - [ ] T109 Map bridge events to EventType in `internal/tray/event_subscriber.go`/`controller.go`
 - [ ] T052 Implement "not live" indicator when bridge stopped in `internal/tray/ui.go`
 - [ ] T053 Add batch UI updates (100ms ticker) for performance in `internal/tray/ui.go`
 
@@ -234,11 +237,7 @@
 ### Implementation for User Story 10
 
 - [ ] T082 Implement version embedding via ldflags in `cmd/tray/main.go`
-- [ ] T083 Implement HTTP version check stub in `internal/tray/updater.go`
-- [ ] T084 Implement version comparison logic in `internal/tray/updater.go`
-- [ ] T085 Implement update check dialog/result display in `internal/tray/ui.go`
-- [ ] T086 Implement network error handling in `internal/tray/updater.go`
-- [ ] T087 Wire Check for Updates menu item in `internal/tray/ui.go`
+- [ ] T083 Implement a no-network update-check stub (show current version or "Update checking not configured") in `internal/tray/updater.go` and `internal/tray/ui.go`
 
 **Checkpoint**: User Story 10 complete — Update check works, displays result, handles errors gracefully
 
@@ -258,7 +257,7 @@
 - [ ] T095 Update `specs/002-bridge-system-tray-gui/quickstart.md` with final usage instructions
 - [ ] T096 Run quickstart validation: follow steps and verify everything works
 - [ ] T097 Code cleanup: remove debug logging, add comments where needed
-- [ ] T098 Performance profiling: verify <1s panel open, <2s state updates
+- [ ] T098 Performance profiling: verify <1s panel open, <2s state updates (POST-MVP)
 
 ---
 

@@ -1,6 +1,6 @@
 # suprema-device-gateway Development Guidelines
 
-Auto-generated from all feature plans. Last updated: 2026-04-12
+Auto-generated from all feature plans. Last updated: 2026-04-13
 
 ## Active Technologies
 
@@ -22,6 +22,7 @@ tests/
 Go 1.24.7 (existing project version): Follow standard conventions
 
 ## Recent Changes
+- 002-bridge-system-tray-gui: Added [if applicable, e.g., PostgreSQL, CoreData, files or N/A]
 
 - 002-bridge-system-tray-gui: Added Go 1.24.7 (existing project version)
 

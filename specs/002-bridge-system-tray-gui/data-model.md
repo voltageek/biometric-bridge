@@ -66,6 +66,7 @@ A single real-time event from the bridge event broker.
 | `description` | `string` | Detailed description |
 | `severity` | `EventSeverity` | Severity level affecting UI styling |
 | `deviceName` | `string` | Source device name (optional) |
+| `type` | `EventType` | Event category (scan/enrollment/connection/system/error) |
 
 **EventSeverity enum values:**
 - `normal` — Standard events (dark text)
@@ -215,6 +216,7 @@ LogEntry
 ### EventEntry Validation
 - `title` non-empty, max 100 characters
 - `severity` must be valid enum value
+ - `type` must be valid EventType value (scan, enrollment, connection, system, error)
 - `timestamp` not in future
 
 ### LogEntry Validation

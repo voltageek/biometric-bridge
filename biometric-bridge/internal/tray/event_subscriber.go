@@ -32,6 +32,34 @@ func (s Severity) String() string {
 	}
 }
 
+// EventType categorizes events for filtering in the UI.
+type EventType int
+
+const (
+	EventTypeScan EventType = iota
+	EventTypeEnrollment
+	EventTypeConnection
+	EventTypeSystem
+	EventTypeError
+)
+
+func (t EventType) String() string {
+	switch t {
+	case EventTypeScan:
+		return "scan"
+	case EventTypeEnrollment:
+		return "enrollment"
+	case EventTypeConnection:
+		return "connection"
+	case EventTypeSystem:
+		return "system"
+	case EventTypeError:
+		return "error"
+	default:
+		return "unknown"
+	}
+}
+
 // EventEntry is a display-friendly event from the bridge.
 type EventEntry struct {
 	Timestamp   time.Time
@@ -39,6 +67,7 @@ type EventEntry struct {
 	Description string
 	Severity    Severity
 	DeviceName  string
+	Type        EventType
 }
 
 // EventBuffer is a ring buffer for events with subscription support.
@@ -70,6 +99,27 @@ func (b *EventBuffer) Push(event EventEntry) {
 			// Subscriber is slow, skip this event
 		}
 	}
+}
+
+// GetFiltered returns events matching the provided type and/or severity.
+// Use zero values to indicate "no filter" for that field.
+func (b *EventBuffer) GetFiltered(t EventType, s Severity) []EventEntry {
+	all := b.buffer.GetAll()
+	var out []EventEntry
+	for _, e := range all {
+		if t != EventType(-1) { // sentinel: -1 means no type filter
+			if e.Type != t {
+				continue
+			}
+		}
+		if s != Severity(-1) { // sentinel: -1 means no severity filter
+			if e.Severity != s {
+				continue
+			}
+		}
+		out = append(out, e)
+	}
+	return out
 }
 
 // GetAll returns all events in chronological order.
@@ -140,4 +190,26 @@ func MapBridgeEventType(eventType string) (string, Severity) {
 	default:
 		return eventType, SeverityNormal
 	}
+}
+
+// MapBridgeEvent maps a raw bridge event type to a display title, severity and EventType.
+func MapBridgeEvent(eventType string) (title string, sev Severity, et EventType) {
+	title, sev = MapBridgeEventType(eventType)
+	// map underlying string categories to EventType
+	switch eventType {
+	case "scan_started", "scan_complete":
+		et = EventTypeScan
+	case "enrollment_complete":
+		et = EventTypeEnrollment
+	case "device_disconnected", "device_reconnecting", "device_connected", "resync_started", "resync_complete":
+		et = EventTypeConnection
+	case "bridge_started", "bridge_stopped":
+		et = EventTypeSystem
+	case "error":
+		et = EventTypeError
+	default:
+		// default mapping: treat unknown as system
+		et = EventTypeSystem
+	}
+	return
 }

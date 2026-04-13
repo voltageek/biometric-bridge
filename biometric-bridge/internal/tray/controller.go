@@ -330,7 +330,45 @@ func (c *BridgeController) eventSubscriber() {
 	// Subscribe to broker events
 	// Note: This is a simplified version - actual implementation would
 	// need to handle the specific event types from the bridge
-	<-c.stopCh
+	if c.broker == nil {
+		// nothing to subscribe to
+		<-c.stopCh
+		return
+	}
+
+	ch, ok := c.broker.Subscribe()
+	if !ok {
+		<-c.stopCh
+		return
+	}
+
+	for {
+		select {
+		case <-c.stopCh:
+			return
+		case ev, ok := <-ch:
+			if !ok {
+				return
+			}
+			rawType := ev.Type
+			desc := ev.Message
+			if desc == "" {
+				desc = fmt.Sprintf("device=%s", ev.DeviceName)
+			}
+
+			title, sev, et := MapBridgeEvent(rawType)
+			if c.eventBuffer != nil {
+				c.eventBuffer.Push(EventEntry{
+					Timestamp:   time.Now(),
+					Title:       title,
+					Description: desc,
+					Severity:    sev,
+					DeviceName:  ev.DeviceName,
+					Type:        et,
+				})
+			}
+		}
+	}
 }
 
 func (c *BridgeController) notifyStatusChange() {

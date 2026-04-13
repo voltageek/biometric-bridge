@@ -49,6 +49,61 @@ func StartUIWithTray(c *BridgeController, jwtStore *JWTStore, evBuf *EventBuffer
 	title := widget.NewLabelWithStyle("The Kinetic Vault", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	statusLabel := widget.NewLabel("status: unknown")
 	addrLabel := widget.NewLabel("address: -")
+	// Event filter control (type)
+	typeOptions := []string{"All", "Scan", "Enrollment", "Connection", "System", "Error"}
+	typeSelect := widget.NewSelect(typeOptions, func(string) {})
+	typeSelect.SetSelected("All")
+
+	// Event list (simple) - will show recent events
+	eventList := widget.NewList(
+		func() int { return 0 },
+		func() fyne.CanvasObject { return widget.NewLabel("") },
+		func(i widget.ListItemID, o fyne.CanvasObject) {},
+	)
+
+	refreshEvents := func() {
+		// Determine selected type
+		sel := typeSelect.Selected
+		var et EventType = EventType(-1)
+		switch strings.ToLower(sel) {
+		case "scan":
+			et = EventTypeScan
+		case "enrollment":
+			et = EventTypeEnrollment
+		case "connection":
+			et = EventTypeConnection
+		case "system":
+			et = EventTypeSystem
+		case "error":
+			et = EventTypeError
+		default:
+			et = EventType(-1)
+		}
+
+		var items []EventEntry
+		if et == EventType(-1) {
+			items = evBuf.GetRecent(50)
+		} else {
+			items = evBuf.GetFiltered(et, Severity(-1))
+		}
+
+		// rebuild list backing store by recreating widget (simpler than mutating existing list)
+		count := len(items)
+		eventList.Length = func() int { return count }
+		eventList.CreateItem = func() fyne.CanvasObject { return widget.NewLabel("") }
+		eventList.UpdateItem = func(i widget.ListItemID, o fyne.CanvasObject) {
+			if i < 0 || i >= count {
+				o.(*widget.Label).SetText("")
+				return
+			}
+			e := items[count-1-i] // show newest first
+			o.(*widget.Label).SetText(e.Timestamp.Format("15:04:05") + " — " + e.Title + " — " + e.Description)
+		}
+		eventList.Refresh()
+	}
+
+	// hook selection change
+	typeSelect.OnChanged = func(string) { refreshEvents() }
 
 	copyBtn := widget.NewButton("COPY JWT", nil)
 	resyncBtn := widget.NewButton("RE-SYNC", nil)
@@ -117,6 +172,8 @@ func StartUIWithTray(c *BridgeController, jwtStore *JWTStore, evBuf *EventBuffer
 		container.NewVBox(
 			statusLabel,
 			addrLabel,
+			container.NewHBox(widget.NewLabel("Event Type:"), layout.NewSpacer(), typeSelect),
+			eventList,
 		),
 		layout.NewSpacer(),
 		container.NewHBox(copyBtn, layout.NewSpacer(), resyncBtn),
@@ -221,6 +278,7 @@ func StartUIWithTray(c *BridgeController, jwtStore *JWTStore, evBuf *EventBuffer
 			mShow := systray.AddMenuItem("Show Panel", "Show the Kinetic Vault panel")
 			mOpenCfg := systray.AddMenuItem("Open Config File", "Open bridge config in editor")
 			mShowLog := systray.AddMenuItem("Show Log Folder", "Open folder containing bridge log file")
+			mCheckUpdates := systray.AddMenuItem("Check for Updates", "Check for new application versions (MVP: stub)")
 			systray.AddSeparator()
 			mRestart := systray.AddMenuItem("Restart Service", "Restart the embedded bridge")
 			mStop := systray.AddMenuItem("Stop Service", "Stop the embedded bridge")
@@ -271,6 +329,23 @@ func StartUIWithTray(c *BridgeController, jwtStore *JWTStore, evBuf *EventBuffer
 								}
 							}
 							_ = openFolder(folder)
+						}()
+					case <-mCheckUpdates.ClickedCh:
+						go func() {
+							// Determine configured update URL from config if available
+							var updateURL string
+							var ver string
+							if strings.TrimSpace(configPath) != "" {
+								if cfg, err := cfgpkg.LoadDriverOnly(configPath); err == nil {
+									updateURL = cfg.Tray.UpdateCheckURL
+									ver = cfg.Tray.Version
+								}
+							}
+							if ver == "" {
+								ver = Version
+							}
+							res := CheckForUpdates(ver, updateURL)
+							showToast(res, 4*time.Second)
 						}()
 					case <-mQuit.ClickedCh:
 						systray.Quit()

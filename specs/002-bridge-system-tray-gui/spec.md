@@ -227,6 +227,7 @@ An operator opens the settings dropdown and selects "Check for Updates". The app
 - **FR-011**: System MUST open the config.yaml file in the system's default editor when "Open Config" is selected from the settings dropdown.
 - **FR-012**: System MUST open a detailed log viewer window when "View Logs" is selected, displaying bridge logs from an in-memory ring buffer populated by a custom slog handler. The slog handler MUST also write logs to a file on disk for persistence. The log viewer MUST support severity filtering.
 - **FR-013**: System MUST check for application updates when "Check for Updates" is selected and display the result.
+ - **FR-013**: System MUST provide a "Check for Updates" action in the settings dropdown. For the MVP this action will display the current version or a message "Update checking not configured" (no network requests). A configurable update source and network-based check will be considered post‑MVP.
 - **FR-014**: System MUST restart the bridge (graceful teardown of HTTP server, event broker, and driver, then re-initialization from config) when "Restart Service" is selected, with status and event log reflecting the restart sequence.
 - **FR-015**: System MUST stop the bridge process gracefully when "Stop Service" is selected, following the same ordered teardown as the CLI (HTTP server stop, event broker stop, driver close). The "Stop Service" menu item MUST be styled with red text and icon.
 - **FR-016**: System MUST detect unexpected bridge failure (server error, driver crash) and update the panel status to an error state with an event log entry and a "Restart Service" option.
@@ -258,6 +259,7 @@ An operator opens the settings dropdown and selects "Check for Updates". The app
 - **SC-006**: The application launches, starts the bridge, and shows a tray icon within 10 seconds (assuming configured devices are reachable).
 - **SC-007**: The bridge managed by the tray application exhibits identical behavior (device connection, HTTP serving, event streaming, graceful shutdown) to the CLI bridge.
 - **SC-008**: The application runs reliably for at least 8 hours of continuous operation without memory leaks or UI degradation.
+ - **SC-008**: Soak testing (8-hour reliability test) is deferred to post‑MVP. For the MVP the application will rely on bounded in‑memory buffers, unit tests, and code review to reduce the risk of memory leaks or UI degradation. A formal 8‑hour soak test will be added to the polish phase after MVP.
 - **SC-009**: The settings dropdown provides access to all service lifecycle and utility actions within 2 clicks from the tray icon.
 - **SC-010**: The panel renders correctly at 340px width with proper section spacing, color tokens, and typography as specified in the UI design.
 
@@ -271,5 +273,6 @@ An operator opens the settings dropdown and selects "Check for Updates". The app
 - The "Connected User" reflects the identity extracted from the most recent authenticated JWT received by the bridge's HTTP server. No session state is added to the bridge — the tray observes the auth middleware to capture the latest token's claims (sub, name). If no authenticated request has been received, the section shows a placeholder.
 - Auto-start (launch on login) is handled by the application installer or OS-level configuration, not through a toggle in the GUI settings.
 - Update checking requires a defined update source (URL or mechanism) — the specific source will be determined during implementation.
+ - Update checking: by default no remote update source is configured for the MVP; the UI shows "Update checking not configured". If an update source is later configured, the application will query it to determine available versions.
 - The tray application replaces the bridge's default slog handler with a custom multi-writer handler that writes structured logs to both an in-memory ring buffer (for the View Logs UI) and a log file on disk (for persistence and troubleshooting). The log file path defaults to `bridge.log` in the same directory as config.yaml and is configurable via a new `log.file` field in config.yaml.
 - Only one instance of the bridge tray application runs at a time. Duplicate launches are detected and redirected.
