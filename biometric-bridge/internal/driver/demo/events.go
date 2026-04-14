@@ -13,6 +13,7 @@ type EventSimulator struct {
 	ch     chan driver.Event
 	stopCh chan struct{}
 	wg     sync.WaitGroup
+	next   int
 }
 
 // NewEventSimulator creates an event simulator that emits events on ch.
@@ -46,11 +47,11 @@ func (s *EventSimulator) Start() {
 			case <-s.stopCh:
 				return
 			case <-ticker.C:
-				// Emit a synthetic scan event for a random device
 				if len(s.cfg.Devices) == 0 {
 					continue
 				}
-				idx := generateRandomInt(0, len(s.cfg.Devices)-1)
+				idx := s.next % len(s.cfg.Devices)
+				s.next++
 				dc := s.cfg.Devices[idx]
 				select {
 				case <-s.stopCh:
