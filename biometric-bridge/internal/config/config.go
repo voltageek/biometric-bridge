@@ -164,6 +164,32 @@ func applyDefaults(cfg *BridgeConfig) {
 	}
 }
 
+// LoadDemoDefaults returns a BridgeConfig with sensible defaults for demo mode.
+// No config file is needed — this provides everything required to start the
+// bridge in demo mode with zero configuration.
+func LoadDemoDefaults() *BridgeConfig {
+	return &BridgeConfig{
+		Bridge: BridgeSettings{
+			Listen:        "127.0.0.1:7070",
+			AllowedOrigin: "http://localhost:3000",
+			TokenIssuer:   "demo",
+			TokenAudience: "biometric-bridge",
+			ClockSkew:     "30s",
+		},
+		Devices: []DeviceConfig{
+			{Name: "Demo Device"},
+		},
+		Events: EventSettings{
+			ReconnectBase: "1s",
+			ReconnectCap:  "120s",
+		},
+		Log: LogSettings{
+			Level: "info",
+		},
+		Driver: "demo",
+	}
+}
+
 func validate(cfg *BridgeConfig) error {
 	// Bridge settings
 	if err := validateListenAddr(cfg.Bridge.Listen); err != nil {

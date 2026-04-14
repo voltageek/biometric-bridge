@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"encoding/hex"
 	"flag"
 	"fmt"
@@ -28,6 +29,7 @@ import (
 
 var (
 	flagTest   = flag.Bool("test", false, "Run a single scan test and exit (no HTTP server)")
+	flagDemo   = flag.Bool("demo", false, "Start bridge in demo mode (mock driver, no hardware required)")
 	flagOutput = flag.String("output", "", "Save captured fingerprint image (PNG if .png extension, raw grayscale otherwise; only with --test)")
 	flagFinger = flag.String("finger", "", "Finger position for LED guidance during --test scan (e.g., right_index, left_thumb)")
 	flagMode   = flag.String("mode", "", "Multi-finger capture mode for --test: left_four, right_four, two_thumbs")
@@ -43,6 +45,11 @@ func main() {
 }
 
 func run() error {
+	// T016: --demo takes precedence over --test
+	if *flagDemo {
+		return runDemo()
+	}
+
 	// --- Load config ---
 	cfgPath := "config.yaml"
 	if p := os.Getenv("BRIDGE_CONFIG"); p != "" {
@@ -163,6 +170,151 @@ func run() error {
 	}
 
 	// Ordered teardown
+	slog.Info("shutdown: stopping HTTP server")
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer shutdownCancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		slog.Error("HTTP server shutdown error", "error", err)
+	}
+
+	slog.Info("shutdown: stopping event broker")
+	broker.Stop()
+
+	slog.Info("shutdown: closing driver")
+	if err := drv.Close(); err != nil {
+		slog.Error("driver close error", "error", err)
+	}
+
+	slog.Info("shutdown complete")
+	return nil
+}
+
+// runDemo starts the bridge in demo mode with a mock driver.
+// No hardware, SDK libraries, or config file is required.
+func runDemo() error {
+	slog.Info("========================================")
+	slog.Info("  Starting Biometric Bridge in DEMO mode")
+	slog.Info("========================================")
+
+	// --- Load config (with fallback to defaults) ---
+	cfgPath := "config.yaml"
+	if p := os.Getenv("BRIDGE_CONFIG"); p != "" {
+		cfgPath = p
+	}
+
+	cfg := config.LoadDemoDefaults()
+
+	if _, err := os.Stat(cfgPath); err == nil {
+		slog.Info("config file found, loading with relaxed validation", "path", cfgPath)
+		loaded, err := config.LoadDriverOnly(cfgPath)
+		if err != nil {
+			slog.Warn("config load failed, using defaults", "path", cfgPath, "error", err)
+		} else {
+			cfg = loaded
+		}
+	}
+
+	// Override driver to demo regardless of config
+	cfg.Driver = "demo"
+
+	// --- Setup logging ---
+	setupLogging(cfg.Log.Level)
+
+	// --- Initialize demo driver ---
+	drv, err := initDriver(cfg)
+	if err != nil {
+		return fmt.Errorf("demo driver init: %w", err)
+	}
+
+	// --- Populate device registry ---
+	registry := device.NewRegistry()
+	for _, info := range drv.ListDevices() {
+		registry.Register(info)
+	}
+	slog.Info("demo devices registered", "count", len(cfg.Devices))
+
+	// --- Generate and print demo JWT (T014, FR-013) ---
+	issuer := cfg.Bridge.TokenIssuer
+	if issuer == "" {
+		issuer = "demo"
+	}
+	audience := cfg.Bridge.TokenAudience
+	if audience == "" {
+		audience = "biometric-bridge"
+	}
+
+	jwtToken, err := auth.DemoJWT(issuer, audience, "demo-user", "Demo User", 1*time.Hour)
+	if err != nil {
+		return fmt.Errorf("generate demo JWT: %w", err)
+	}
+	fmt.Println()
+	fmt.Printf("  Demo JWT: %s\n", jwtToken)
+	fmt.Println()
+
+	// --- Load auth public key (T015, FR-019) ---
+	var pubKey *ecdsa.PublicKey
+	if cfg.Bridge.PublicKeyFile != "" {
+		slog.Info("loading public key from config", "path", cfg.Bridge.PublicKeyFile)
+		pubKey, err = auth.LoadPublicKey(cfg.Bridge.PublicKeyFile)
+		if err != nil {
+			slog.Warn("config public key failed, using embedded test key", "error", err)
+		}
+	}
+	if pubKey == nil {
+		slog.Info("using embedded test public key for demo mode")
+		pubKey, err = auth.LoadPublicKeyBytes(auth.TestPublicKeyPEM())
+		if err != nil {
+			return fmt.Errorf("load embedded test public key: %w", err)
+		}
+	}
+
+	tokenValidator := auth.NewTokenValidator(
+		pubKey,
+		issuer,
+		audience,
+		cfg.Bridge.ClockSkewDuration(),
+	)
+
+	// --- Start event broker ---
+	slog.Info("starting event monitor")
+	eventCh := drv.Subscribe()
+	broker := events.NewBroker(eventCh)
+	broker.Start()
+
+	// --- Build router and start HTTP server ---
+	handler := api.NewRouter(api.RouterDeps{
+		TokenValidator: tokenValidator,
+		Driver:         drv,
+		Registry:       registry,
+		Broker:         broker,
+		AllowedOrigin:  cfg.Bridge.AllowedOrigin,
+		Demo:           true,
+	})
+
+	srv := &http.Server{
+		Addr:    cfg.Bridge.Listen,
+		Handler: handler,
+	}
+
+	errCh := make(chan error, 1)
+	go func() {
+		slog.Info("listening", "addr", cfg.Bridge.Listen)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			errCh <- err
+		}
+	}()
+
+	// --- Graceful shutdown ---
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+
+	select {
+	case sig := <-sigCh:
+		slog.Info("received signal, shutting down", "signal", sig)
+	case err := <-errCh:
+		return fmt.Errorf("server error: %w", err)
+	}
+
 	slog.Info("shutdown: stopping HTTP server")
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()

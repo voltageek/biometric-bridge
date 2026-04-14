@@ -19,6 +19,7 @@ type RouterDeps struct {
 	Registry       *device.Registry
 	Broker         *events.Broker
 	AllowedOrigin  string
+	Demo           bool
 }
 
 // NewRouter creates an http.Handler with all routes registered, CORS applied,
@@ -27,7 +28,7 @@ func NewRouter(deps RouterDeps) http.Handler {
 	mux := http.NewServeMux()
 
 	// Health check — no auth
-	mux.HandleFunc("GET /healthz", handleHealthz)
+	mux.HandleFunc("GET /healthz", makeHealthzHandler(deps.Demo))
 
 	// Authenticated API routes
 	mux.HandleFunc("GET /api/devices", NewDevicesHandler(deps.Driver))
@@ -46,10 +47,17 @@ func NewRouter(deps RouterDeps) http.Handler {
 	return corsMiddleware(deps.AllowedOrigin, authed)
 }
 
-// handleHealthz responds with {"status":"ok"} (FR-012).
-func handleHealthz(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Write([]byte(`{"status":"ok"}`))
+// makeHealthzHandler returns a health check handler. When demo is true,
+// the response includes {"status":"ok","demo":true,"version":"dev"}.
+func makeHealthzHandler(demo bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if demo {
+			w.Write([]byte(`{"status":"ok","demo":true,"version":"dev"}`))
+			return
+		}
+		w.Write([]byte(`{"status":"ok"}`))
+	}
 }
 
 // corsMiddleware applies CORS headers per the http-api.md contract.

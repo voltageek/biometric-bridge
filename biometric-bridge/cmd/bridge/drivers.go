@@ -1,6 +1,9 @@
 package main
 
-import "biometric-bridge/internal/driver"
+import (
+	"biometric-bridge/internal/driver"
+	"biometric-bridge/internal/driver/demo"
+)
 
 // driverFactories holds driver constructor functions registered by build-tag-gated
 // init() functions. Each factory takes a config and returns a Driver.
@@ -17,4 +20,10 @@ func registerDriverFactory(name string, factory DriverFactory) {
 // getDriverFactory returns a registered factory by name, or nil if not found.
 func getDriverFactory(name string) DriverFactory {
 	return driverFactories[name]
+}
+
+func init() {
+	registerDriverFactory("demo", func(_ string) (driver.Driver, error) {
+		return demo.New(demo.DefaultDemoConfig())
+	})
 }
