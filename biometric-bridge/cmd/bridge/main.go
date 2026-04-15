@@ -142,6 +142,7 @@ func run() error {
 		Registry:       registry,
 		Broker:         broker,
 		AllowedOrigin:  cfg.Bridge.AllowedOrigin,
+		RequestLogging: cfg.Log.RequestLogging,
 	})
 
 	srv := &http.Server{
@@ -289,6 +290,7 @@ func runDemo() error {
 		Broker:         broker,
 		AllowedOrigin:  cfg.Bridge.AllowedOrigin,
 		Demo:           true,
+		RequestLogging: cfg.Log.RequestLogging,
 	})
 
 	srv := &http.Server{

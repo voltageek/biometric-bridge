@@ -59,8 +59,9 @@ type EventSettings struct {
 
 // LogSettings holds logging configuration.
 type LogSettings struct {
-	Level string `yaml:"level"`
-	File  string `yaml:"file"` // Log file path for persistent storage
+	Level          string `yaml:"level"`
+	File           string `yaml:"file"`            // Log file path for persistent storage
+	RequestLogging bool   `yaml:"request_logging"` // Enable HTTP request/response logging
 }
 
 // GSDKSettings holds G-SDK driver configuration.

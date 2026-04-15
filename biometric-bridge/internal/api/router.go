@@ -4,7 +4,9 @@ package api
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
+	"time"
 
 	"biometric-bridge/internal/auth"
 	"biometric-bridge/internal/device"
@@ -20,6 +22,7 @@ type RouterDeps struct {
 	Broker         *events.Broker
 	AllowedOrigin  string
 	Demo           bool
+	RequestLogging bool
 }
 
 // NewRouter creates an http.Handler with all routes registered, CORS applied,
@@ -43,8 +46,14 @@ func NewRouter(deps RouterDeps) http.Handler {
 	skipPaths := map[string]bool{"/healthz": true, "/events": true}
 	authed := auth.Middleware(deps.TokenValidator, skipPaths)(mux)
 
+	// Apply request logging middleware if enabled
+	var handler http.Handler = authed
+	if deps.RequestLogging {
+		handler = requestLoggingMiddleware(handler)
+	}
+
 	// Apply CORS
-	return corsMiddleware(deps.AllowedOrigin, authed)
+	return corsMiddleware(deps.AllowedOrigin, handler)
 }
 
 // makeHealthzHandler returns a health check handler. When demo is true,
@@ -87,4 +96,36 @@ func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 // writeError writes a JSON error response.
 func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
+}
+
+// requestLoggingMiddleware logs HTTP request details (method, path, status, duration, remote address).
+func requestLoggingMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+
+		// Create a response writer wrapper to capture status code
+		rw := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
+
+		next.ServeHTTP(rw, r)
+
+		duration := time.Since(start)
+		slog.Info("http request",
+			"method", r.Method,
+			"path", r.URL.Path,
+			"status", rw.statusCode,
+			"duration_ms", duration.Milliseconds(),
+			"remote_addr", r.RemoteAddr,
+		)
+	})
+}
+
+// responseWriter wraps http.ResponseWriter to capture the status code.
+type responseWriter struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (rw *responseWriter) WriteHeader(code int) {
+	rw.statusCode = code
+	rw.ResponseWriter.WriteHeader(code)
 }
