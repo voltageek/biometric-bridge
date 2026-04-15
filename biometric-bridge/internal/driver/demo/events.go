@@ -2,18 +2,16 @@ package demo
 
 import (
 	"sync"
-	"time"
 
 	"biometric-bridge/internal/driver"
 )
 
-// EventSimulator emits synthetic events on a channel at configurable intervals.
+// EventSimulator manages API-triggered events for the demo driver.
 type EventSimulator struct {
 	cfg    DemoConfig
 	ch     chan driver.Event
 	stopCh chan struct{}
 	wg     sync.WaitGroup
-	next   int
 }
 
 // NewEventSimulator creates an event simulator that emits events on ch.
@@ -25,46 +23,14 @@ func NewEventSimulator(cfg DemoConfig, ch chan driver.Event) *EventSimulator {
 	}
 }
 
-// Start begins emitting periodic scan events. Blocks until Stop is called.
+// Start keeps the goroutine alive to handle API-triggered events via EmitAPIEvent.
+// No automatic events are emitted — the WebSocket only broadcasts events triggered
+// by actual API calls (scan, enroll), just like a real device would.
 func (s *EventSimulator) Start() {
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
-		ticker := time.NewTicker(s.cfg.EventInterval)
-		defer ticker.Stop()
-
-		// Emit initial "connected" events for all devices
-		for _, dc := range s.cfg.Devices {
-			select {
-			case <-s.stopCh:
-				return
-			case s.ch <- driver.Event{Type: "connected", DeviceName: dc.Name}:
-			}
-		}
-
-		for {
-			select {
-			case <-s.stopCh:
-				return
-			case <-ticker.C:
-				if len(s.cfg.Devices) == 0 {
-					continue
-				}
-				idx := s.next % len(s.cfg.Devices)
-				s.next++
-				dc := s.cfg.Devices[idx]
-				select {
-				case <-s.stopCh:
-					return
-				case s.ch <- driver.Event{
-					Type:       "scan",
-					DeviceName: dc.Name,
-					UserID:     "demo-user",
-					EventCode:  0,
-				}:
-				}
-			}
-		}
+		<-s.stopCh
 	}()
 }
 

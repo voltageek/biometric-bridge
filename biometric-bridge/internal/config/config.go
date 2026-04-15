@@ -171,7 +171,7 @@ func LoadDemoDefaults() *BridgeConfig {
 	return &BridgeConfig{
 		Bridge: BridgeSettings{
 			Listen:        "127.0.0.1:7070",
-			AllowedOrigin: "http://localhost:3000",
+			AllowedOrigin: "*",
 			TokenIssuer:   "demo",
 			TokenAudience: "biometric-bridge",
 			ClockSkew:     "30s",
