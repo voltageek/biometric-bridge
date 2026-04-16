@@ -3,8 +3,11 @@
 package api
 
 import (
+	"bufio"
 	"encoding/json"
+	"errors"
 	"log/slog"
+	"net"
 	"net/http"
 	"time"
 
@@ -40,6 +43,7 @@ func NewRouter(deps RouterDeps) http.Handler {
 	mux.HandleFunc("POST /api/scan", NewScanHandler(deps.Driver, deps.Registry))
 	mux.HandleFunc("POST /api/slap-scan", NewSlapScanHandler(deps.Driver, deps.Registry))
 	mux.HandleFunc("POST /api/enroll", NewEnrollHandler(deps.Driver, deps.Registry))
+	mux.HandleFunc("POST /api/slap-enroll", NewSlapEnrollHandler(deps.Driver, deps.Registry, deps.Broker))
 
 	// WebSocket event stream (auth handled inside the handler via query param)
 	mux.Handle("GET /events", events.NewHandler(deps.Broker, deps.TokenValidator))
@@ -130,4 +134,14 @@ type responseWriter struct {
 func (rw *responseWriter) WriteHeader(code int) {
 	rw.statusCode = code
 	rw.ResponseWriter.WriteHeader(code)
+}
+
+// Hijack implements http.Hijacker so wrapped ResponseWriters remain usable
+// for WebSocket upgrades. It delegates to the underlying ResponseWriter if
+// it supports hijacking.
+func (rw *responseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	if h, ok := rw.ResponseWriter.(http.Hijacker); ok {
+		return h.Hijack()
+	}
+	return nil, nil, errors.New("hijack not supported")
 }

@@ -16,6 +16,9 @@ type Driver struct {
 	closeCh   chan struct{}
 	closeOnce sync.Once
 	simulator *EventSimulator
+	// attemptLock protects the attemptCounts map
+	attemptLock   sync.Mutex
+	attemptCounts map[string]int
 }
 
 // New creates a new demo Driver with the given config.
@@ -87,7 +90,13 @@ func (d *Driver) SlapScan(ctx context.Context, deviceName string, mode driver.Ca
 	case <-time.After(d.cfg.ScanDelay):
 	}
 
-	slapImageB64, slapWidth, slapHeight, fingers := GenerateSlapResult(*dc, string(mode), d.cfg.QualityMin, d.cfg.QualityMax)
+	// Track attempt counts per-device so we can simulate improving quality
+	// across successive SlapScan calls. Use a simple in-memory map stored on
+	// the Driver. Initialize lazily.
+	d.initAttemptMap()
+	attempt := d.incrementAttempt(deviceName)
+
+	slapImageB64, slapWidth, slapHeight, fingers := GenerateSlapResult(*dc, string(mode), d.cfg.QualityMin, d.cfg.QualityMax, attempt, d.cfg)
 	slapImage, _ := base64.StdEncoding.DecodeString(slapImageB64)
 
 	slapFingers := make([]driver.ScanResult, 0, len(fingers))
@@ -161,4 +170,23 @@ func (d *Driver) Close() error {
 		close(d.eventCh)
 	})
 	return nil
+}
+
+// initAttemptMap ensures the attemptCounts map is initialized.
+func (d *Driver) initAttemptMap() {
+	d.attemptLock.Lock()
+	defer d.attemptLock.Unlock()
+	if d.attemptCounts == nil {
+		d.attemptCounts = make(map[string]int)
+	}
+}
+
+// incrementAttempt increments and returns the attempt number for deviceName.
+func (d *Driver) incrementAttempt(deviceName string) int {
+	d.attemptLock.Lock()
+	defer d.attemptLock.Unlock()
+	c := d.attemptCounts[deviceName]
+	c++
+	d.attemptCounts[deviceName] = c
+	return c
 }

@@ -72,7 +72,7 @@ type DeviceInfo struct {
 // ScanResult holds the output of a single fingerprint scan.
 type ScanResult struct {
 	Template []byte         // Raw fingerprint image/template bytes
-	Quality  int            // 0–100 quality score from the SDK
+	Quality  int            // 0–100 quality score (higher = better); drivers normalize SDK-specific scales
 	Width    int            // Image width in pixels (0 if not applicable)
 	Height   int            // Image height in pixels (0 if not applicable)
 	Finger   FingerPosition // Which finger this image belongs to (set by segmentation)

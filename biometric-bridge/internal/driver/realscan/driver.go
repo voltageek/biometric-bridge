@@ -479,6 +479,50 @@ var fingerLEDMap = map[driver.FingerPosition]fingerLEDInfo{
 	driver.FingerRightLittle: {fingerIndex: 10, modeLED: 0x02}, // RS_FINGER_RIGHT_LITTLE, RS_LED_MODE_RIGHT_FINGER4
 }
 
+// nfiqToPercent converts NIST NFIQ scores (1–5, lower=better) to a 0–100
+// scale (higher=better) for API consistency across drivers. We also accept
+// values outside 1..5 defensively.
+func nfiqToPercent(nfiq int) int {
+	switch nfiq {
+	case 1:
+		return 100
+	case 2:
+		return 80
+	case 3:
+		return 60
+	case 4:
+		return 40
+	case 5:
+		return 20
+	default:
+		if nfiq <= 0 {
+			// Treat missing/zero as best-effort
+			return 100
+		}
+		// Unknown/greater-than-5 -> map into lower quality
+		if nfiq > 5 {
+			// scale down proportionally (clamp)
+			v := 100 - (nistClamp(nfiq)-1)*20
+			if v < 0 {
+				return 0
+			}
+			return v
+		}
+		return 0
+	}
+}
+
+// nistClamp helper clamps nfiq to 1..5 range for simple computations.
+func nistClamp(n int) int {
+	if n < 1 {
+		return 1
+	}
+	if n > 5 {
+		return 5
+	}
+	return n
+}
+
 // setFingerLEDs lights the mode LED and the individual finger LED for the
 // given position. Call clearLEDs to turn them off after capture.
 func setFingerLEDs(handle C.int, finger driver.FingerPosition) {
@@ -759,7 +803,9 @@ func (d *RSDriver) Scan(ctx context.Context, deviceName string, finger driver.Fi
 
 	quality := 0
 	if qrc == C.RS_SUCCESS {
-		quality = int(nistQuality)
+		rawNFIQ := int(nistQuality)
+		quality = nfiqToPercent(rawNFIQ)
+		slog.Debug("quality converted", "device", deviceName, "nist_nfiq", rawNFIQ, "quality_pct", quality)
 	} else {
 		slog.Warn("quality scoring failed", "device", deviceName, "error", rsErrString(int(qrc)))
 	}
@@ -890,11 +936,14 @@ func (d *RSDriver) SlapScan(ctx context.Context, deviceName string, mode driver.
 		goFingerImage := C.GoBytes(unsafe.Pointer(fImg), C.int(fSize))
 
 		// Get quality score for this finger
+
 		var nistQuality C.int
 		quality := 0
 		qrc := C.sdk_get_quality_score(fImg, C.int(fW), C.int(fH), &nistQuality)
 		if qrc == C.RS_SUCCESS {
-			quality = int(nistQuality)
+			rawNFIQ := int(nistQuality)
+			quality = nfiqToPercent(rawNFIQ)
+			slog.Debug("segmented finger quality converted", "device", deviceName, "finger", i, "nist_nfiq", rawNFIQ, "quality_pct", quality)
 		} else {
 			slog.Debug("quality scoring failed for segmented finger",
 				"device", deviceName, "finger", i, "error", rsErrString(int(qrc)))
@@ -912,7 +961,9 @@ func (d *RSDriver) SlapScan(ctx context.Context, deviceName string, mode driver.
 			}
 			// Override quality with SDK-reported quality if available
 			if slapInfoPtr.imageQuality > 0 {
-				quality = int(slapInfoPtr.imageQuality)
+				rawNFIQ := int(slapInfoPtr.imageQuality)
+				quality = nfiqToPercent(rawNFIQ)
+				slog.Debug("segmented finger quality from slapInfo", "device", deviceName, "finger", i, "nist_nfiq", rawNFIQ, "quality_pct", quality)
 			}
 		}
 

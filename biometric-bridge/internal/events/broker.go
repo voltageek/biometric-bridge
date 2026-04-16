@@ -115,3 +115,11 @@ func (b *Broker) drainSubscribers() {
 		delete(b.subscribers, ch)
 	}
 }
+
+// Emit allows direct injection of driver.Event into the broker's fan-out
+// mechanism. This is used by API handlers to emit workflow-level events
+// (e.g., enrollment_retry) that are not produced by drivers.
+func (b *Broker) Emit(evt driver.Event) {
+	// Fan out synchronously to preserve ordering relative to handler actions.
+	b.fanOut(evt)
+}

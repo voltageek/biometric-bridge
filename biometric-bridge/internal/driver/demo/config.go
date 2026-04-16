@@ -23,6 +23,12 @@ type DemoConfig struct {
 	EnrollDelay   time.Duration
 	QualityMin    int
 	QualityMax    int
+	// Optional fields to simulate quality improvement across attempts. If
+	// AttemptsToImprove > 0, the demo driver will return InitialQuality for
+	// the first AttemptsToImprove attempts and ImprovedQuality afterward.
+	AttemptsToImprove int
+	InitialQuality    int
+	ImprovedQuality   int
 }
 
 // DefaultDemoConfig returns a DemoConfig with sensible defaults:
@@ -43,10 +49,13 @@ func DefaultDemoConfig() DemoConfig {
 				SlapHeight:      1500,
 			},
 		},
-		EventInterval: 5 * time.Second,
-		ScanDelay:     200 * time.Millisecond,
-		EnrollDelay:   800 * time.Millisecond,
-		QualityMin:    60,
-		QualityMax:    95,
+		EventInterval:     5 * time.Second,
+		ScanDelay:         200 * time.Millisecond,
+		EnrollDelay:       800 * time.Millisecond,
+		QualityMin:        60,
+		QualityMax:        95,
+		AttemptsToImprove: 0,
+		InitialQuality:    0,
+		ImprovedQuality:   0,
 	}
 }
