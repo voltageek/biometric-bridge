@@ -3,8 +3,8 @@
 
 bridge:
   listen:          "127.0.0.1:7070"
-  allowed_origin:  "http://localhost:3000"   # Your web app's origin
-  public_key_file: "./bridge-public.pem"     # ECDSA P-256 public key (PEM)
+  allowed_origin:  "http://localhost:8000"   # Your web app's origin
+  public_key_file: "./test-public.pem"     # ECDSA P-256 public key (PEM)
   token_issuer:    "dev-server"              # Must match JWT iss claim
   token_audience:  "biometric-bridge"        # Must match JWT aud claim
   clock_skew:      "30s"                     # Allowed clock skew for JWT exp
@@ -20,7 +20,8 @@ events:
   reconnect_cap:  "120s"                     # Maximum reconnect wait
 
 log:
-  level: "info"                              # "error" | "info" | "debug"
+  level: "debug"                              # "error" | "info" | "debug"
+  request_logging: true                       # Log HTTP requests
 
 driver: realscan                                  # "bs2", "gsdk", or "realscan"
 
