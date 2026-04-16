@@ -30,8 +30,10 @@ type RouterDeps struct {
 func NewRouter(deps RouterDeps) http.Handler {
 	mux := http.NewServeMux()
 
-	// Health check — no auth
-	mux.HandleFunc("GET /healthz", makeHealthzHandler(deps.Demo))
+	// Health check — no auth (available at both /healthz and /api/healthz)
+	healthzHandler := makeHealthzHandler(deps.Demo)
+	mux.HandleFunc("GET /healthz", healthzHandler)
+	mux.HandleFunc("GET /api/healthz", healthzHandler)
 
 	// Authenticated API routes
 	mux.HandleFunc("GET /api/devices", NewDevicesHandler(deps.Driver))
@@ -42,8 +44,8 @@ func NewRouter(deps RouterDeps) http.Handler {
 	// WebSocket event stream (auth handled inside the handler via query param)
 	mux.Handle("GET /events", events.NewHandler(deps.Broker, deps.TokenValidator))
 
-	// Apply auth middleware (skips /healthz and /events which handle auth internally)
-	skipPaths := map[string]bool{"/healthz": true, "/events": true}
+	// Apply auth middleware (skips /healthz, /api/healthz, and /events which handle auth internally)
+	skipPaths := map[string]bool{"/healthz": true, "/api/healthz": true, "/events": true}
 	authed := auth.Middleware(deps.TokenValidator, skipPaths)(mux)
 
 	// Apply request logging middleware if enabled
