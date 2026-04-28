@@ -1,0 +1,55 @@
+name: Release Build
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.goos }} release binary
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            goos: linux
+            ext: ""
+          - runner: windows-latest
+            goos: windows
+            ext: .exe
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: biometric-bridge/go.mod
+
+      - name: Build binary
+        shell: pwsh
+        working-directory: biometric-bridge
+        run: |
+          $env:CGO_ENABLED = "0"
+          $env:GOOS = "${{ matrix.goos }}"
+          $env:GOARCH = "amd64"
+          New-Item -ItemType Directory -Path ./dist -Force | Out-Null
+          go build -trimpath -ldflags "-s -w" -o "./dist/bridge-${{ matrix.goos }}-amd64${{ matrix.ext }}" ./cmd/bridge
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bridge-${{ matrix.goos }}-amd64
+          path: biometric-bridge/dist/bridge-${{ matrix.goos }}-amd64${{ matrix.ext }}
+
+      - name: Upload release asset
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: biometric-bridge/dist/bridge-${{ matrix.goos }}-amd64${{ matrix.ext }}
