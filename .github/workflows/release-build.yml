@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   build:
-    name: Build linux release binary
+    name: Build release binaries
     runs-on: ubuntu-latest
 
     steps:
@@ -36,15 +36,25 @@ jobs:
           mkdir -p ./dist
           CGO_ENABLED=1 GOOS="linux" GOARCH="amd64" \
             go build -tags "${DRIVER_TAG}" -trimpath -ldflags "-s -w" -o "./dist/bridge-linux-amd64" ./cmd/bridge
+          CGO_ENABLED=0 GOOS="windows" GOARCH="amd64" \
+            go build -trimpath -ldflags "-s -w" -o "./dist/bridge-windows-amd64.exe" ./cmd/bridge
 
-      - name: Upload workflow artifact
+      - name: Upload Linux workflow artifact
         uses: actions/upload-artifact@v4
         with:
           name: bridge-linux-amd64
           path: biometric-bridge/dist/bridge-linux-amd64
 
+      - name: Upload Windows workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bridge-windows-amd64
+          path: biometric-bridge/dist/bridge-windows-amd64.exe
+
       - name: Upload release asset
         if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
-          files: biometric-bridge/dist/bridge-linux-amd64
+          files: |
+            biometric-bridge/dist/bridge-linux-amd64
+            biometric-bridge/dist/bridge-windows-amd64.exe
