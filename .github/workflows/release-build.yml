@@ -27,6 +27,9 @@ jobs:
         with:
           go-version-file: biometric-bridge/go.mod
 
+      - name: Install MinGW cross-compiler
+        run: sudo apt-get update && sudo apt-get install -y gcc-mingw-w64-x86-64
+
       - name: Build binary
         shell: bash
         working-directory: biometric-bridge
@@ -36,15 +39,25 @@ jobs:
           mkdir -p ./dist
           CGO_ENABLED=1 GOOS="linux" GOARCH="amd64" \
             go build -tags "${DRIVER_TAG}" -trimpath -ldflags "-s -w" -o "./dist/bridge-linux-amd64" ./cmd/bridge
+          CGO_ENABLED=1 GOOS="windows" GOARCH="amd64" CC="x86_64-w64-mingw32-gcc" \
+            go build -tags "${DRIVER_TAG}" -trimpath -ldflags "-s -w" -o "./dist/bridge-windows-amd64.exe" ./cmd/bridge
 
-      - name: Upload workflow artifact
+      - name: Upload workflow artifact (linux)
         uses: actions/upload-artifact@v4
         with:
           name: bridge-linux-amd64
           path: biometric-bridge/dist/bridge-linux-amd64
 
-      - name: Upload release asset
+      - name: Upload workflow artifact (windows)
+        uses: actions/upload-artifact@v4
+        with:
+          name: bridge-windows-amd64
+          path: biometric-bridge/dist/bridge-windows-amd64.exe
+
+      - name: Upload release assets
         if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
-          files: biometric-bridge/dist/bridge-linux-amd64
+          files: |
+            biometric-bridge/dist/bridge-linux-amd64
+            biometric-bridge/dist/bridge-windows-amd64.exe

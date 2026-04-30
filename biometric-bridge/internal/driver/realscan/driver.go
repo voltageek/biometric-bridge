@@ -8,12 +8,21 @@
 package realscan
 
 /*
-#cgo LDFLAGS: -ldl
+#cgo linux LDFLAGS: -ldl
+#cgo windows LDFLAGS: -lkernel32
 
 #include <stdlib.h>
 #include <stdint.h>
-#include <dlfcn.h>
 #include <string.h>
+
+#ifdef _WIN32
+    #include <windows.h>
+    typedef HMODULE dl_handle;
+    #define RTLD_NOW 0
+#else
+    #include <dlfcn.h>
+    typedef void* dl_handle;
+#endif
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Constants matching RS_ParamDef.h / RS_Error.h
@@ -177,7 +186,7 @@ typedef int (*fn_RS_TakeImageDataSegment)(int deviceHandle, int timeout,
 // SDK handle and loaded function pointers
 // ──────────────────────────────────────────────────────────────────────────────
 
-static void* sdk_handle = NULL;
+static dl_handle sdk_handle = NULL;
 
 static fn_RS_InitSDK                    p_InitSDK;
 static fn_RS_ExitSDK                    p_ExitSDK;
@@ -202,40 +211,79 @@ static fn_RS_SetModeLED                 p_SetModeLED;
 static fn_RS_TakeImageDataEx            p_TakeImageDataEx;
 static fn_RS_TakeImageDataSegment       p_TakeImageDataSegment;
 
+// Platform-specific dynamic loading wrappers
+#ifdef _WIN32
+static dl_handle dl_open(const char* path) {
+    return LoadLibraryA(path);
+}
+
+static void* dl_sym(dl_handle handle, const char* symbol) {
+    return (void*)GetProcAddress(handle, symbol);
+}
+
+static void dl_close(dl_handle handle) {
+    FreeLibrary(handle);
+}
+
+static const char* dl_error(void) {
+    static char buf[512];
+    DWORD err = GetLastError();
+    FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+                   NULL, err, 0, buf, sizeof(buf), NULL);
+    return buf;
+}
+#else
+static dl_handle dl_open(const char* path) {
+    return dlopen(path, RTLD_NOW);
+}
+
+static void* dl_sym(dl_handle handle, const char* symbol) {
+    return dlsym(handle, symbol);
+}
+
+static void dl_close(dl_handle handle) {
+    dlclose(handle);
+}
+
+static const char* dl_error(void) {
+    return dlerror();
+}
+#endif
+
 // loadSDK dynamically loads the RealScan shared library and resolves symbols.
 static int loadSDK(const char* libPath) {
-    sdk_handle = dlopen(libPath, RTLD_NOW);
+    sdk_handle = dl_open(libPath);
     if (!sdk_handle) return -1;
 
-    p_InitSDK             = (fn_RS_InitSDK)dlsym(sdk_handle, "RS_InitSDK");
-    p_ExitSDK             = (fn_RS_ExitSDK)dlsym(sdk_handle, "_Z10RS_ExitSDKv");
-    p_InitDevice          = (fn_RS_InitDevice)dlsym(sdk_handle, "RS_InitDevice");
-    p_ExitDevice          = (fn_RS_ExitDevice)dlsym(sdk_handle, "RS_ExitDevice");
-    p_GetNumOfDevice      = (fn_RS_GetNumOfDevice)dlsym(sdk_handle, "RS_GetNumOfDevice");
-    p_GetDeviceInfo       = (fn_RS_GetDeviceInfo)dlsym(sdk_handle, "RS_GetDeviceInfo");
-    p_SetCaptureMode      = (fn_RS_SetCaptureMode)dlsym(sdk_handle, "RS_SetCaptureMode");
-    p_TakeImageData       = (fn_RS_TakeImageData)dlsym(sdk_handle, "RS_TakeImageData");
-    p_FreeImageData       = (fn_RS_FreeImageData)dlsym(sdk_handle, "RS_FreeImageData");
-    p_GetQualityScore     = (fn_RS_GetQualityScore)dlsym(sdk_handle, "RS_GetQualityScore");
-    p_AbortCapture        = (fn_RS_AbortCapture)dlsym(sdk_handle, "RS_AbortCapture");
-    p_IsCapturing         = (fn_RS_IsCapturing)dlsym(sdk_handle, "RS_IsCapturing");
-    p_SetAutomaticCalibrate = (fn_RS_SetAutomaticCalibrate)dlsym(sdk_handle, "RS_SetAutomaticCalibrate");
-    p_SetPreProcessing    = (fn_RS_SetPreProcessing)dlsym(sdk_handle, "RS_SetPreProcessing");
-    p_StartHotPlugging    = (fn_RS_StartHotPlugging)dlsym(sdk_handle, "RS_StartHotPlugging");
-    p_Beep                = (fn_RS_Beep)dlsym(sdk_handle, "RS_Beep");
-    p_GetErrString        = (fn_RS_GetErrString)dlsym(sdk_handle, "RS_GetErrString");
-    p_RegisterHotPluggingCallback = (fn_RS_RegisterHotPluggingCallback)dlsym(sdk_handle, "RS_RegisterHotPluggingCallback");
-    p_SetFingerLED        = (fn_RS_SetFingerLED)dlsym(sdk_handle, "RS_SetFingerLED");
-    p_SetModeLED          = (fn_RS_SetModeLED)dlsym(sdk_handle, "RS_SetModeLED");
-    p_TakeImageDataEx     = (fn_RS_TakeImageDataEx)dlsym(sdk_handle, "RS_TakeImageDataEx");
-    p_TakeImageDataSegment = (fn_RS_TakeImageDataSegment)dlsym(sdk_handle, "RS_TakeImageDataSegment");
+    p_InitSDK             = (fn_RS_InitSDK)dl_sym(sdk_handle, "RS_InitSDK");
+    p_ExitSDK             = (fn_RS_ExitSDK)dl_sym(sdk_handle, "_Z10RS_ExitSDKv");
+    p_InitDevice          = (fn_RS_InitDevice)dl_sym(sdk_handle, "RS_InitDevice");
+    p_ExitDevice          = (fn_RS_ExitDevice)dl_sym(sdk_handle, "RS_ExitDevice");
+    p_GetNumOfDevice      = (fn_RS_GetNumOfDevice)dl_sym(sdk_handle, "RS_GetNumOfDevice");
+    p_GetDeviceInfo       = (fn_RS_GetDeviceInfo)dl_sym(sdk_handle, "RS_GetDeviceInfo");
+    p_SetCaptureMode      = (fn_RS_SetCaptureMode)dl_sym(sdk_handle, "RS_SetCaptureMode");
+    p_TakeImageData       = (fn_RS_TakeImageData)dl_sym(sdk_handle, "RS_TakeImageData");
+    p_FreeImageData       = (fn_RS_FreeImageData)dl_sym(sdk_handle, "RS_FreeImageData");
+    p_GetQualityScore     = (fn_RS_GetQualityScore)dl_sym(sdk_handle, "RS_GetQualityScore");
+    p_AbortCapture        = (fn_RS_AbortCapture)dl_sym(sdk_handle, "RS_AbortCapture");
+    p_IsCapturing         = (fn_RS_IsCapturing)dl_sym(sdk_handle, "RS_IsCapturing");
+    p_SetAutomaticCalibrate = (fn_RS_SetAutomaticCalibrate)dl_sym(sdk_handle, "RS_SetAutomaticCalibrate");
+    p_SetPreProcessing    = (fn_RS_SetPreProcessing)dl_sym(sdk_handle, "RS_SetPreProcessing");
+    p_StartHotPlugging    = (fn_RS_StartHotPlugging)dl_sym(sdk_handle, "RS_StartHotPlugging");
+    p_Beep                = (fn_RS_Beep)dl_sym(sdk_handle, "RS_Beep");
+    p_GetErrString        = (fn_RS_GetErrString)dl_sym(sdk_handle, "RS_GetErrString");
+    p_RegisterHotPluggingCallback = (fn_RS_RegisterHotPluggingCallback)dl_sym(sdk_handle, "RS_RegisterHotPluggingCallback");
+    p_SetFingerLED        = (fn_RS_SetFingerLED)dl_sym(sdk_handle, "RS_SetFingerLED");
+    p_SetModeLED          = (fn_RS_SetModeLED)dl_sym(sdk_handle, "RS_SetModeLED");
+    p_TakeImageDataEx     = (fn_RS_TakeImageDataEx)dl_sym(sdk_handle, "RS_TakeImageDataEx");
+    p_TakeImageDataSegment = (fn_RS_TakeImageDataSegment)dl_sym(sdk_handle, "RS_TakeImageDataSegment");
 
     // Required symbols (hot plugging is optional — may not be present in all SDK versions)
     if (!p_InitSDK || !p_ExitSDK || !p_InitDevice || !p_ExitDevice ||
         !p_GetNumOfDevice || !p_GetDeviceInfo || !p_SetCaptureMode ||
         !p_TakeImageData || !p_FreeImageData || !p_GetQualityScore ||
         !p_AbortCapture || !p_IsCapturing || !p_SetAutomaticCalibrate) {
-        dlclose(sdk_handle);
+        dl_close(sdk_handle);
         sdk_handle = NULL;
         return -2;
     }
@@ -531,7 +579,7 @@ func New(libPath string) (*RSDriver, error) {
 	rc := C.loadSDK(cPath)
 	if rc != 0 {
 		return nil, fmt.Errorf("failed to load RealScan SDK from %s (error: %d, dlerror: %s)",
-			libPath, rc, C.GoString(C.dlerror()))
+			libPath, rc, C.GoString(C.dl_error()))
 	}
 
 	// Initialize SDK — pass NULL config dir, 0 options
