@@ -1,0 +1,50 @@
+name: Release Build
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      driver_tag:
+        description: Build tag for the bridge binary
+        required: false
+        default: realscan
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build linux release binary
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: biometric-bridge/go.mod
+
+      - name: Build binary
+        shell: bash
+        working-directory: biometric-bridge
+        env:
+          DRIVER_TAG: ${{ github.event.inputs.driver_tag || 'realscan' }}
+        run: |
+          mkdir -p ./dist
+          CGO_ENABLED=1 GOOS="linux" GOARCH="amd64" \
+            go build -tags "${DRIVER_TAG}" -trimpath -ldflags "-s -w" -o "./dist/bridge-linux-amd64" ./cmd/bridge
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bridge-linux-amd64
+          path: biometric-bridge/dist/bridge-linux-amd64
+
+      - name: Upload release asset
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: biometric-bridge/dist/bridge-linux-amd64
