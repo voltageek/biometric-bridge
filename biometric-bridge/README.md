@@ -24,6 +24,10 @@ CGO_ENABLED=1 go build -tags bs2 -o bridge ./cmd/bridge
 # RealScan G10 (USB-attached flat-bed scanner)
 CGO_ENABLED=1 go build -tags realscan -o bridge ./cmd/bridge
 
+# RealScan G10 (USB-attached flat-bed scanner) - Windows cross-compile from Linux
+CGO_ENABLED=1 GOOS=windows GOARCH=amd64 CC=x86_64-w64-mingw32-gcc \
+  go build -tags realscan -o bridge.exe ./cmd/bridge
+
 # G-SDK (Suprema Device Gateway — requires a license key)
 go build -tags gsdk -o bridge ./cmd/bridge
 ```
