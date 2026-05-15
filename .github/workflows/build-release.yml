@@ -1,0 +1,406 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build (e.g., 1.0.0)'
+        required: true
+        default: '1.0.0'
+
+env:
+  GO_VERSION: '1.24.7'
+
+jobs:
+  build-linux:
+    name: Build Linux (Bridge + Tray)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgl1-mesa-dev \
+            xorg-dev \
+            libx11-dev \
+            libxcursor-dev \
+            libxrandr-dev \
+            libxinerama-dev \
+            libxi-dev \
+            libxxf86vm-dev \
+            libgtk-3-dev
+
+      - name: Set version variables
+        id: version
+        run: |
+          VERSION="${{ github.ref_name }}"
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            VERSION="v${{ github.event.inputs.version }}"
+          fi
+          VERSION="${VERSION#v}"
+          BUILD_TIME=$(date -u '+%Y-%m-%d_%H:%M:%S_UTC')
+          GIT_COMMIT="${{ github.sha }}"
+          
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "build_time=${BUILD_TIME}" >> $GITHUB_OUTPUT
+          echo "git_commit=${GIT_COMMIT:0:7}" >> $GITHUB_OUTPUT
+
+      - name: Build Linux Bridge
+        working-directory: biometric-bridge
+        run: |
+          echo "Building Linux bridge..."
+          LDFLAGS="-X main.Version=${{ steps.version.outputs.version }} -X main.BuildTime=${{ steps.version.outputs.build_time }} -X main.GitCommit=${{ steps.version.outputs.git_commit }}"
+          CGO_ENABLED=1 go build -tags realscan -ldflags="${LDFLAGS}" -o bridge-realscan ./cmd/bridge
+          chmod +x bridge-realscan
+          ./bridge-realscan --version
+
+      - name: Build Linux Tray
+        working-directory: biometric-bridge
+        run: |
+          echo "Building Linux tray app..."
+          LDFLAGS="-X main.Version=${{ steps.version.outputs.version }} -X main.BuildTime=${{ steps.version.outputs.build_time }} -X main.GitCommit=${{ steps.version.outputs.git_commit }}"
+          CGO_ENABLED=1 go build -ldflags="${LDFLAGS}" -o bridge-tray ./cmd/tray
+          chmod +x bridge-tray
+          ./bridge-tray --version
+
+      - name: Copy Linux SDK libraries
+        working-directory: biometric-bridge
+        run: |
+          mkdir -p linux-deploy/lib
+          if [ -d "../RealScan_SDK_for_Linux_v2.2.0.2470/Lib/x64" ]; then
+            cp -r ../RealScan_SDK_for_Linux_v2.2.0.2470/Lib/x64/* linux-deploy/lib/
+          fi
+
+      - name: Create Linux deployment package
+        working-directory: biometric-bridge
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          
+          mkdir -p linux-deploy
+          cp bridge-realscan linux-deploy/
+          cp bridge-tray linux-deploy/
+          cp config.yaml linux-deploy/config.example.yaml
+          cp start-realscan.sh linux-deploy/
+          
+          # Create README
+          cat > linux-deploy/README.txt << 'EOF'
+          Biometric Bridge - Linux Deployment
+          =====================================
+          
+          Version: ${{ steps.version.outputs.version }}
+          Build Time: ${{ steps.version.outputs.build_time }}
+          Git Commit: ${{ steps.version.outputs.git_commit }}
+          
+          Contents:
+          - bridge-realscan: Main bridge application
+          - bridge-tray: System tray application (optional)
+          - config.example.yaml: Configuration template
+          - start-realscan.sh: Startup script with library paths
+          - lib/: RealScan SDK libraries
+          
+          Quick Start:
+          1. Copy config.example.yaml to config.yaml and customize
+          2. Run: ./start-realscan.sh
+          3. Optional: Run ./bridge-tray in a separate terminal
+          
+          For detailed instructions, see documentation at:
+          https://github.com/your-org/suprema-device-gateway
+          EOF
+          
+          cd linux-deploy
+          tar -czf ../biometric-bridge-linux-${VERSION}.tar.gz .
+          cd ..
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-build
+          path: |
+            biometric-bridge/biometric-bridge-linux-*.tar.gz
+            biometric-bridge/bridge-realscan
+            biometric-bridge/bridge-tray
+          retention-days: 7
+
+  build-windows:
+    name: Build Windows (Bridge + Tray)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Install Windows dependencies
+        run: |
+          # Go and MinGW are already available on windows-latest
+          go version
+          gcc --version
+
+      - name: Set version variables
+        id: version
+        shell: pwsh
+        run: |
+          $VERSION = "${{ github.ref_name }}"
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $VERSION = "v${{ github.event.inputs.version }}"
+          }
+          $VERSION = $VERSION.TrimStart('v')
+          $BUILD_TIME = (Get-Date).ToUniversalTime().ToString('yyyy-MM-dd_HH:mm:ss_UTC')
+          $GIT_COMMIT = "${{ github.sha }}".Substring(0,7)
+          
+          "version=$VERSION" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "build_time=$BUILD_TIME" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "git_commit=$GIT_COMMIT" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Build Windows Bridge
+        working-directory: biometric-bridge
+        shell: cmd
+        run: |
+          echo Building Windows bridge...
+          set CGO_ENABLED=1
+          set GOOS=windows
+          set GOARCH=amd64
+          go build -tags realscan -ldflags="-H windowsgui -X main.Version=${{ steps.version.outputs.version }} -X main.BuildTime=${{ steps.version.outputs.build_time }} -X main.GitCommit=${{ steps.version.outputs.git_commit }}" -o bridge-realscan.exe ./cmd/bridge
+
+      - name: Build Windows Tray
+        working-directory: biometric-bridge
+        shell: cmd
+        run: |
+          echo Building Windows tray app...
+          set CGO_ENABLED=1
+          set GOOS=windows
+          set GOARCH=amd64
+          go build -ldflags="-H windowsgui -X main.Version=${{ steps.version.outputs.version }} -X main.BuildTime=${{ steps.version.outputs.build_time }} -X main.GitCommit=${{ steps.version.outputs.git_commit }}" -o bridge-tray.exe ./cmd/tray
+
+      - name: Verify builds
+        working-directory: biometric-bridge
+        shell: pwsh
+        run: |
+          if (!(Test-Path bridge-realscan.exe)) {
+            Write-Error "bridge-realscan.exe not found"
+            exit 1
+          }
+          if (!(Test-Path bridge-tray.exe)) {
+            Write-Error "bridge-tray.exe not found"
+            exit 1
+          }
+          Write-Host "✓ Both executables built successfully"
+          Get-Item bridge-realscan.exe, bridge-tray.exe | Format-Table Name, Length
+
+      - name: Create Windows deployment package
+        working-directory: biometric-bridge
+        shell: pwsh
+        run: |
+          $VERSION = "${{ steps.version.outputs.version }}"
+          
+          New-Item -ItemType Directory -Force -Path windows-deploy
+          
+          # Copy executables
+          Copy-Item bridge-realscan.exe windows-deploy/
+          Copy-Item bridge-tray.exe windows-deploy/
+          Copy-Item config.yaml windows-deploy/config.example.yaml
+          
+          # Copy SDK DLLs
+          $SDK_PATH = "..\RealScanSDK for Windows_v2.2.0.2311\Bin\x64"
+          if (Test-Path $SDK_PATH) {
+            Copy-Item "$SDK_PATH\*" windows-deploy\ -Recurse -Force
+          }
+          
+          # Create service installation scripts
+          @'
+          @echo off
+          echo Installing Biometric Bridge as Windows Service...
+          sc create BiometricBridge binPath= "%~dp0bridge-realscan.exe" start= auto
+          sc description BiometricBridge "Biometric device bridge service for fingerprint readers"
+          echo.
+          echo Service installed. Start with: sc start BiometricBridge
+          pause
+          '@ | Out-File -FilePath windows-deploy\install-service.bat -Encoding ASCII
+          
+          @'
+          @echo off
+          echo Uninstalling Biometric Bridge service...
+          sc stop BiometricBridge
+          sc delete BiometricBridge
+          echo Service uninstalled.
+          pause
+          '@ | Out-File -FilePath windows-deploy\uninstall-service.bat -Encoding ASCII
+          
+          @'
+          @echo off
+          echo Starting Biometric Bridge...
+          start "" bridge-realscan.exe
+          echo.
+          echo Bridge started. Check system tray for status.
+          echo To start tray app, run: bridge-tray.exe
+          pause
+          '@ | Out-File -FilePath windows-deploy\start-bridge.bat -Encoding ASCII
+          
+          # Create README
+          @"
+          Biometric Bridge - Windows Deployment
+          ======================================
+          
+          Version: ${{ steps.version.outputs.version }}
+          Build Time: ${{ steps.version.outputs.build_time }}
+          Git Commit: ${{ steps.version.outputs.git_commit }}
+          
+          Contents:
+          - bridge-realscan.exe: Main bridge application
+          - bridge-tray.exe: System tray application (optional)
+          - config.example.yaml: Configuration template
+          - *.dll: RealScan SDK libraries
+          - install-service.bat: Install as Windows service
+          - uninstall-service.bat: Remove Windows service
+          - start-bridge.bat: Quick start script
+          
+          Quick Start:
+          1. Copy config.example.yaml to config.yaml and customize
+          2. Run start-bridge.bat
+          3. Optional: Run bridge-tray.exe for system tray icon
+          
+          Windows Service Installation:
+          1. Run install-service.bat as Administrator
+          2. Start service: sc start BiometricBridge
+          3. Service runs automatically on startup
+          
+          Requirements:
+          - Windows 10/11 (x64)
+          - RealScan USB drivers installed
+          - Visual C++ Redistributable 2019 or later
+          
+          For detailed instructions, see:
+          https://github.com/your-org/suprema-device-gateway
+          "@ | Out-File -FilePath windows-deploy\README.txt -Encoding UTF8
+          
+          # Create ZIP package
+          Compress-Archive -Path windows-deploy\* -DestinationPath "biometric-bridge-windows-${VERSION}.zip" -Force
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-build
+          path: |
+            biometric-bridge/biometric-bridge-windows-*.zip
+            biometric-bridge/bridge-realscan.exe
+            biometric-bridge/bridge-tray.exe
+          retention-days: 7
+
+  create-release:
+    name: Create GitHub Release
+    needs: [build-linux, build-windows]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download Linux artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-build
+          path: ./artifacts/linux
+
+      - name: Download Windows artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-build
+          path: ./artifacts/windows
+
+      - name: Generate release notes
+        id: release_notes
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          
+          cat > release_notes.md << EOF
+          # Biometric Bridge Release ${VERSION}
+          
+          ## Downloads
+          
+          ### Windows (x64)
+          - **biometric-bridge-windows-${VERSION}.zip** - Complete package with bridge, tray app, and SDK libraries
+          
+          ### Linux (x64)
+          - **biometric-bridge-linux-${VERSION}.tar.gz** - Complete package with bridge, tray app, and SDK libraries
+          
+          ## What's Included
+          
+          ### Bridge Application
+          - WebSocket server for biometric device communication
+          - REST API for device management
+          - Support for Suprema RealScan G-10 fingerprint readers
+          - Hot-plug device detection
+          - JWT authentication
+          
+          ### System Tray Application (Optional)
+          - Quick access to bridge controls
+          - System tray icon with status indicators
+          - Open web interface in browser
+          - View connection status and JWT token
+          
+          ## Installation
+          
+          ### Windows
+          1. Extract the ZIP file
+          2. Install RealScan USB drivers
+          3. Copy \`config.example.yaml\` to \`config.yaml\`
+          4. Run \`start-bridge.bat\` or install as Windows service
+          
+          ### Linux
+          1. Extract the tarball
+          2. Copy \`config.example.yaml\` to \`config.yaml\`
+          3. Run \`./start-realscan.sh\`
+          4. Optional: Run \`./bridge-tray\` for system tray
+          
+          ## Documentation
+          
+          - [Windows Deployment Guide](biometric-bridge/WINDOWS-DEPLOYMENT.md)
+          - [Windows Tray App Guide](biometric-bridge/WINDOWS-TRAY.md)
+          - [Cross-Platform Architecture](biometric-bridge/CROSS-PLATFORM.md)
+          
+          ## Requirements
+          
+          ### Windows
+          - Windows 10/11 (x64)
+          - Visual C++ Redistributable 2019+
+          - RealScan USB drivers
+          
+          ### Linux
+          - Ubuntu 20.04+ or equivalent
+          - X11 display server (for tray app)
+          - RealScan SDK libraries (included)
+          
+          ## Checksums
+          
+          \`\`\`
+          $(cd artifacts/windows && sha256sum biometric-bridge-windows-*.zip)
+          $(cd artifacts/linux && sha256sum biometric-bridge-linux-*.tar.gz)
+          \`\`\`
+          EOF
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            artifacts/windows/biometric-bridge-windows-*.zip
+            artifacts/linux/biometric-bridge-linux-*.tar.gz
+          body_path: release_notes.md
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

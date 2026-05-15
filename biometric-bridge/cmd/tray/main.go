@@ -2,6 +2,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log/slog"
 	"os"
@@ -10,7 +11,26 @@ import (
 	"biometric-bridge/internal/tray"
 )
 
+var (
+	// Version information (set via ldflags during build)
+	Version   = "dev"
+	BuildTime = "unknown"
+	GitCommit = "unknown"
+
+	flagVersion = flag.Bool("version", false, "Print version information and exit")
+)
+
 func main() {
+	flag.Parse()
+
+	if *flagVersion {
+		fmt.Printf("Biometric Bridge Tray\n")
+		fmt.Printf("Version:    %s\n", Version)
+		fmt.Printf("Build Time: %s\n", BuildTime)
+		fmt.Printf("Git Commit: %s\n", GitCommit)
+		os.Exit(0)
+	}
+
 	// Check for single instance
 	locker := tray.NewInstanceLocker()
 	if !locker.TryLock() {
@@ -26,7 +46,7 @@ func main() {
 
 	// Initialize logging
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
-	slog.Info("Starting The Kinetic Vault")
+	slog.Info("Starting The Kinetic Vault", "version", Version)
 
 	// Initialize minimal buffers and stores
 	jwtStore := tray.NewJWTStore()

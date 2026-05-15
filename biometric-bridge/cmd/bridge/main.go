@@ -28,15 +28,29 @@ import (
 )
 
 var (
-	flagTest   = flag.Bool("test", false, "Run a single scan test and exit (no HTTP server)")
-	flagDemo   = flag.Bool("demo", false, "Start bridge in demo mode (mock driver, no hardware required)")
-	flagOutput = flag.String("output", "", "Save captured fingerprint image (PNG if .png extension, raw grayscale otherwise; only with --test)")
-	flagFinger = flag.String("finger", "", "Finger position for LED guidance during --test scan (e.g., right_index, left_thumb)")
-	flagMode   = flag.String("mode", "", "Multi-finger capture mode for --test: left_four, right_four, two_thumbs")
+	// Version information (set via ldflags during build)
+	Version   = "dev"
+	BuildTime = "unknown"
+	GitCommit = "unknown"
+
+	flagTest    = flag.Bool("test", false, "Run a single scan test and exit (no HTTP server)")
+	flagDemo    = flag.Bool("demo", false, "Start bridge in demo mode (mock driver, no hardware required)")
+	flagVersion = flag.Bool("version", false, "Print version information and exit")
+	flagOutput  = flag.String("output", "", "Save captured fingerprint image (PNG if .png extension, raw grayscale otherwise; only with --test)")
+	flagFinger  = flag.String("finger", "", "Finger position for LED guidance during --test scan (e.g., right_index, left_thumb)")
+	flagMode    = flag.String("mode", "", "Multi-finger capture mode for --test: left_four, right_four, two_thumbs")
 )
 
 func main() {
 	flag.Parse()
+
+	if *flagVersion {
+		fmt.Printf("Biometric Bridge\n")
+		fmt.Printf("Version:    %s\n", Version)
+		fmt.Printf("Build Time: %s\n", BuildTime)
+		fmt.Printf("Git Commit: %s\n", GitCommit)
+		os.Exit(0)
+	}
 
 	if err := run(); err != nil {
 		slog.Error("fatal", "error", err)

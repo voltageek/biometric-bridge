@@ -1,5 +1,11 @@
 .PHONY: help build-linux build-windows-cross build-tray-linux build-tray-windows-cross deploy-windows deploy-windows-full clean test install
 
+# Version information
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+BUILD_TIME := $(shell date -u '+%Y-%m-%d_%H:%M:%S_UTC')
+GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+LDFLAGS := -X main.Version=$(VERSION) -X main.BuildTime=$(BUILD_TIME) -X main.GitCommit=$(GIT_COMMIT)
+
 # Default target
 help:
 	@echo "biometric-bridge Makefile"
@@ -21,26 +27,28 @@ help:
 	@echo "  make deploy-windows           # Build + create Windows package"
 	@echo "  make deploy-windows-full      # Build bridge + tray + package (very slow)"
 	@echo ""
+	@echo "Version: $(VERSION) | Commit: $(GIT_COMMIT)"
+	@echo ""
 	@echo "Note: Tray cross-compilation is VERY slow (15-30+ min) due to Fyne/CGo."
 	@echo "      Recommend building tray natively on Windows instead."
 
 # Build Linux bridge with RealScan support
 build-linux:
 	@echo "Building Linux bridge with RealScan support..."
-	CGO_ENABLED=1 go build -tags realscan -o bridge-realscan ./cmd/bridge
-	@echo "✓ Build complete: bridge-realscan"
+	CGO_ENABLED=1 go build -tags realscan -ldflags="$(LDFLAGS)" -o bridge-realscan ./cmd/bridge
+	@echo "✓ Build complete: bridge-realscan (version $(VERSION))"
 
 # Cross-compile Windows bridge from Linux
 build-windows-cross:
 	@echo "Cross-compiling Windows bridge..."
-	./build-windows-cross.sh
+	./build-windows-cross.sh $(VERSION)
 	@echo "✓ Build complete: bridge-realscan.exe"
 
 # Build Linux system tray app
 build-tray-linux:
 	@echo "Building Linux system tray app..."
-	go build -o bridge-tray ./cmd/tray
-	@echo "✓ Build complete: bridge-tray"
+	go build -ldflags="$(LDFLAGS)" -o bridge-tray ./cmd/tray
+	@echo "✓ Build complete: bridge-tray (version $(VERSION))"
 
 # Cross-compile Windows tray app (WARNING: Very slow!)
 build-tray-windows-cross:
@@ -50,7 +58,7 @@ build-tray-windows-cross:
 	@read -p "Continue? [y/N] " -n 1 -r; \
 	echo; \
 	if [[ $$REPLY =~ ^[Yy]$$ ]]; then \
-		./build-tray-windows-cross.sh; \
+		./build-tray-windows-cross.sh $(VERSION); \
 	else \
 		echo "Build cancelled"; \
 		exit 1; \

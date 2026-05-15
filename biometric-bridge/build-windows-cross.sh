@@ -7,7 +7,7 @@
 #   - Windows SDK DLLs in ../RealScanSDK for Windows_v2.2.0.2311/x64/
 #
 # Usage:
-#   ./build-windows-cross.sh
+#   ./build-windows-cross.sh [version]
 
 set -euo pipefail
 
@@ -18,6 +18,9 @@ cd "$SCRIPT_DIR"
 SDK_DIR="../RealScanSDK for Windows_v2.2.0.2311"
 SDK_LIB_DIR="$SDK_DIR/Bin/x64"
 OUTPUT="bridge-realscan.exe"
+VERSION="${1:-dev}"
+BUILD_TIME=$(date -u '+%Y-%m-%d_%H:%M:%S_UTC')
+GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 
 # Colors
 GREEN='\033[0;32m'
@@ -27,6 +30,7 @@ NC='\033[0m' # No Color
 
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${GREEN}Building biometric-bridge for Windows (x64) using cross-compilation${NC}"
+echo -e "${GREEN}Version: $VERSION | Commit: $GIT_COMMIT${NC}"
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 
@@ -65,8 +69,9 @@ export GOARCH=amd64
 export CC=x86_64-w64-mingw32-gcc
 export CXX=x86_64-w64-mingw32-g++
 
-# Build with realscan tag
-go build -tags realscan -o "$OUTPUT" ./cmd/bridge
+# Build with version information
+LDFLAGS="-X main.Version=${VERSION} -X main.BuildTime=${BUILD_TIME} -X main.GitCommit=${GIT_COMMIT}"
+go build -tags realscan -ldflags="${LDFLAGS}" -o "$OUTPUT" ./cmd/bridge
 
 if [ -f "$OUTPUT" ]; then
     SIZE=$(du -h "$OUTPUT" | cut -f1)
