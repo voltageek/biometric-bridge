@@ -185,7 +185,7 @@ func StartUIWithTray(c *BridgeController, jwtStore *JWTStore, evBuf *EventBuffer
 	toastLabel.Hide()
 	toastBox := container.NewVBox(toastLabel)
 	// overlay toast on top of content
-	overlay := container.NewMax(content, container.NewBorder(toastBox, nil, nil, nil, nil))
+	overlay := container.NewStack(content, container.NewBorder(toastBox, nil, nil, nil, nil))
 
 	w.SetContent(overlay)
 
