@@ -345,81 +345,81 @@ func (d *RSDriver) Scan(ctx context.Context, deviceName string, finger driver.Fi
 	d.mu.Unlock()
 	defer func() {
 		d.mu.Lock()
-	dev.capturing = false
-	d.mu.Unlock()
-}()
+		dev.capturing = false
+		d.mu.Unlock()
+	}()
 
-handle := dev.handle
+	handle := dev.handle
 
-// Light LEDs to guide finger placement
-if finger != driver.FingerNone {
-	setFingerLEDs(handle, finger)
-	defer clearLEDs(handle)
-}
-
-// Set up context cancellation to abort capture
-done := make(chan struct{})
-go func() {
-	select {
-	case <-ctx.Done():
-		sdkAbortCapture(handle)
-	case <-done:
+	// Light LEDs to guide finger placement
+	if finger != driver.FingerNone {
+		setFingerLEDs(handle, finger)
+		defer clearLEDs(handle)
 	}
-}()
 
-// Blocking capture — blocks until finger placed and image acquired
-var imageData unsafe.Pointer
-var width, height, rc int
+	// Set up context cancellation to abort capture
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			sdkAbortCapture(handle)
+		case <-done:
+		}
+	}()
 
-// Use extended capture if a finger hint is available (enables automatic
-// LED feedback during capture — green on success, red on failure)
-if finger != driver.FingerNone {
-	info := fingerLEDMap[finger]
-	imageData, width, height, rc = sdkTakeImageDataEx(handle, defaultCaptureTimeoutMS, info.fingerIndex, 1)
-} else {
-	imageData, width, height, rc = sdkTakeImageData(handle, defaultCaptureTimeoutMS)
-}
-close(done) // stop cancellation goroutine
+	// Blocking capture — blocks until finger placed and image acquired
+	var imageData unsafe.Pointer
+	var width, height, rc int
 
-if rc != RS_SUCCESS {
-	if rc == RS_ERR_CAPTURE_ABORTED {
-		return nil, fmt.Errorf("scan cancelled on device %q", deviceName)
+	// Use extended capture if a finger hint is available (enables automatic
+	// LED feedback during capture — green on success, red on failure)
+	if finger != driver.FingerNone {
+		info := fingerLEDMap[finger]
+		imageData, width, height, rc = sdkTakeImageDataEx(handle, defaultCaptureTimeoutMS, info.fingerIndex, 1)
+	} else {
+		imageData, width, height, rc = sdkTakeImageData(handle, defaultCaptureTimeoutMS)
 	}
-	if rc == RS_ERR_CAPTURE_TIMEOUT {
-		return nil, fmt.Errorf("%w on device %q", driver.ErrScanTimeout, deviceName)
+	close(done) // stop cancellation goroutine
+
+	if rc != RS_SUCCESS {
+		if rc == RS_ERR_CAPTURE_ABORTED {
+			return nil, fmt.Errorf("scan cancelled on device %q", deviceName)
+		}
+		if rc == RS_ERR_CAPTURE_TIMEOUT {
+			return nil, fmt.Errorf("%w on device %q", driver.ErrScanTimeout, deviceName)
+		}
+		return nil, fmt.Errorf("scan failed on device %q: %s (code %d)",
+			deviceName, rsErrString(rc), rc)
 	}
-	return nil, fmt.Errorf("scan failed on device %q: %s (code %d)",
-		deviceName, rsErrString(rc), rc)
-}
 
-// Copy image data to Go memory before freeing SDK memory
-imageSize := width * height // 8-bit grayscale, 1 byte per pixel
-goImageData := make([]byte, imageSize)
-copy(goImageData, unsafe.Slice((*byte)(imageData), imageSize))
+	// Copy image data to Go memory before freeing SDK memory
+	imageSize := width * height // 8-bit grayscale, 1 byte per pixel
+	goImageData := make([]byte, imageSize)
+	copy(goImageData, unsafe.Slice((*byte)(imageData), imageSize))
 
-// Get NIST quality score
-nistQuality, qrc := sdkGetQualityScore(imageData, width, height)
+	// Get NIST quality score
+	nistQuality, qrc := sdkGetQualityScore(imageData, width, height)
 
-// Free SDK-allocated image data
-sdkFreeImageData(imageData)
+	// Free SDK-allocated image data
+	sdkFreeImageData(imageData)
 
-quality := 0
-if qrc == RS_SUCCESS {
-	quality = nfiqToPercent(nistQuality)
-	slog.Debug("quality converted", "device", deviceName, "nist_nfiq", nistQuality, "quality_pct", quality)
-} else {
-	slog.Warn("quality scoring failed", "device", deviceName, "error", rsErrString(qrc))
-}
+	quality := 0
+	if qrc == RS_SUCCESS {
+		quality = nfiqToPercent(nistQuality)
+		slog.Debug("quality converted", "device", deviceName, "nist_nfiq", nistQuality, "quality_pct", quality)
+	} else {
+		slog.Warn("quality scoring failed", "device", deviceName, "error", rsErrString(qrc))
+	}
 
-// Success beep
-sdkBeep(dev.handle, rsBeepPattern1)
+	// Success beep
+	sdkBeep(dev.handle, rsBeepPattern1)
 
-slog.Info("scan complete",
-	"device", deviceName,
-	"width", width,
-	"height", height,
-	"quality", quality,
-	"imageBytes", imageSize,
+	slog.Info("scan complete",
+		"device", deviceName,
+		"width", width,
+		"height", height,
+		"quality", quality,
+		"imageBytes", imageSize,
 	)
 
 	return &driver.ScanResult{
@@ -457,138 +457,138 @@ func (d *RSDriver) SlapScan(ctx context.Context, deviceName string, mode driver.
 		d.mu.Lock()
 		dev.capturing = false
 		d.mu.Unlock()
-}()
+	}()
 
-handle := dev.handle
+	handle := dev.handle
 
-// Switch capture mode to the multi-finger mode
-rc := sdkSetCaptureMode(handle, modeInfo.captureMode, RS_AUTO_SENSITIVITY_HIGH, 1)
-if rc != RS_SUCCESS {
-	return nil, fmt.Errorf("failed to set capture mode %s on device %q: %s (code %d)",
-		mode, deviceName, rsErrString(rc), rc)
-}
-
-// Restore single-finger capture mode when done
-defer func() {
-	rc := sdkSetCaptureMode(handle, RS_CAPTURE_FLAT_SINGLE_FINGER, RS_AUTO_SENSITIVITY_HIGH, 1)
+	// Switch capture mode to the multi-finger mode
+	rc := sdkSetCaptureMode(handle, modeInfo.captureMode, RS_AUTO_SENSITIVITY_HIGH, 1)
 	if rc != RS_SUCCESS {
-		slog.Warn("failed to restore single-finger capture mode",
-			"device", deviceName, "error", rsErrString(rc))
-	}
-}()
-
-// Light mode LED to guide finger placement
-sdkSetModeLED(handle, modeInfo.modeLED, 1)
-defer clearLEDs(handle)
-
-// Set up context cancellation to abort capture
-done := make(chan struct{})
-go func() {
-	select {
-	case <-ctx.Done():
-		sdkAbortCapture(handle)
-	case <-done:
-	}
-}()
-
-// Blocking segmented capture
-imageData, imageWidth, imageHeight, _, numOfFinger, rc, slapInfos, fingerImages, fingerWidths, fingerHeights := sdkTakeImageDataSegment(handle, defaultSlapCaptureTimeoutMS, modeInfo.slapType)
-close(done)
-
-if rc != RS_SUCCESS {
-	if rc == RS_ERR_CAPTURE_ABORTED {
-		return nil, fmt.Errorf("slap scan cancelled on device %q", deviceName)
-	}
-	if rc == RS_ERR_CAPTURE_TIMEOUT {
-		return nil, fmt.Errorf("%w on device %q (slap)", driver.ErrScanTimeout, deviceName)
-	}
-	return nil, fmt.Errorf("slap scan failed on device %q: %s (code %d)",
-		deviceName, rsErrString(rc), rc)
-}
-
-nFingers := numOfFinger
-
-// Copy the full slap image to Go memory
-slapImageSize := imageWidth * imageHeight
-goSlapImage := make([]byte, slapImageSize)
-copy(goSlapImage, unsafe.Slice((*byte)(imageData), slapImageSize))
-
-// Copy each segmented finger image to Go memory
-fingers := make([]driver.ScanResult, 0, nFingers)
-for i := 0; i < nFingers; i++ {
-	fImg := fingerImages[i]
-	fW := fingerWidths[i]
-	fH := fingerHeights[i]
-	fSize := fW * fH
-	goFingerImage := make([]byte, fSize)
-	copy(goFingerImage, unsafe.Slice((*byte)(fImg), fSize))
-
-	// Get quality score for this finger
-	nistQuality, qrc := sdkGetQualityScore(fImg, fW, fH)
-	quality := 0
-	if qrc == RS_SUCCESS {
-		quality = nfiqToPercent(nistQuality)
-		slog.Debug("segmented finger quality converted", "device", deviceName, "finger", i, "nist_nfiq", nistQuality, "quality_pct", quality)
-	} else {
-		slog.Debug("quality scoring failed for segmented finger",
-			"device", deviceName, "finger", i, "error", rsErrString(qrc))
+		return nil, fmt.Errorf("failed to set capture mode %s on device %q: %s (code %d)",
+			mode, deviceName, rsErrString(rc), rc)
 	}
 
-	// Map the SDK fingerType to our FingerPosition
-	var fingerPos driver.FingerPosition
-	if i < len(slapInfos) {
-		fingerType := slapInfos[i].FingerType
-		if pos, ok := slapFingerTypeToPosition[fingerType]; ok {
-			fingerPos = pos
+	// Restore single-finger capture mode when done
+	defer func() {
+		rc := sdkSetCaptureMode(handle, RS_CAPTURE_FLAT_SINGLE_FINGER, RS_AUTO_SENSITIVITY_HIGH, 1)
+		if rc != RS_SUCCESS {
+			slog.Warn("failed to restore single-finger capture mode",
+				"device", deviceName, "error", rsErrString(rc))
 		}
-		// Override quality with SDK-reported quality if available
-		if slapInfos[i].ImageQuality > 0 {
-			rawNFIQ := slapInfos[i].ImageQuality
-			quality = nfiqToPercent(rawNFIQ)
-			slog.Debug("segmented finger quality from slapInfo", "device", deviceName, "finger", i, "nist_nfiq", rawNFIQ, "quality_pct", quality)
+	}()
+
+	// Light mode LED to guide finger placement
+	sdkSetModeLED(handle, modeInfo.modeLED, 1)
+	defer clearLEDs(handle)
+
+	// Set up context cancellation to abort capture
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			sdkAbortCapture(handle)
+		case <-done:
 		}
+	}()
+
+	// Blocking segmented capture
+	imageData, imageWidth, imageHeight, _, numOfFinger, rc, slapInfos, fingerImages, fingerWidths, fingerHeights := sdkTakeImageDataSegment(handle, defaultSlapCaptureTimeoutMS, modeInfo.slapType)
+	close(done)
+
+	if rc != RS_SUCCESS {
+		if rc == RS_ERR_CAPTURE_ABORTED {
+			return nil, fmt.Errorf("slap scan cancelled on device %q", deviceName)
+		}
+		if rc == RS_ERR_CAPTURE_TIMEOUT {
+			return nil, fmt.Errorf("%w on device %q (slap)", driver.ErrScanTimeout, deviceName)
+		}
+		return nil, fmt.Errorf("slap scan failed on device %q: %s (code %d)",
+			deviceName, rsErrString(rc), rc)
 	}
 
-	fingers = append(fingers, driver.ScanResult{
-		Template: goFingerImage,
-		Quality:  quality,
-		Width:    fW,
-		Height:   fH,
-		Finger:   fingerPos,
-	})
+	nFingers := numOfFinger
 
-	slog.Debug("segmented finger",
+	// Copy the full slap image to Go memory
+	slapImageSize := imageWidth * imageHeight
+	goSlapImage := make([]byte, slapImageSize)
+	copy(goSlapImage, unsafe.Slice((*byte)(imageData), slapImageSize))
+
+	// Copy each segmented finger image to Go memory
+	fingers := make([]driver.ScanResult, 0, nFingers)
+	for i := 0; i < nFingers; i++ {
+		fImg := fingerImages[i]
+		fW := fingerWidths[i]
+		fH := fingerHeights[i]
+		fSize := fW * fH
+		goFingerImage := make([]byte, fSize)
+		copy(goFingerImage, unsafe.Slice((*byte)(fImg), fSize))
+
+		// Get quality score for this finger
+		nistQuality, qrc := sdkGetQualityScore(fImg, fW, fH)
+		quality := 0
+		if qrc == RS_SUCCESS {
+			quality = nfiqToPercent(nistQuality)
+			slog.Debug("segmented finger quality converted", "device", deviceName, "finger", i, "nist_nfiq", nistQuality, "quality_pct", quality)
+		} else {
+			slog.Debug("quality scoring failed for segmented finger",
+				"device", deviceName, "finger", i, "error", rsErrString(qrc))
+		}
+
+		// Map the SDK fingerType to our FingerPosition
+		var fingerPos driver.FingerPosition
+		if i < len(slapInfos) {
+			fingerType := slapInfos[i].FingerType
+			if pos, ok := slapFingerTypeToPosition[fingerType]; ok {
+				fingerPos = pos
+			}
+			// Override quality with SDK-reported quality if available
+			if slapInfos[i].ImageQuality > 0 {
+				rawNFIQ := slapInfos[i].ImageQuality
+				quality = nfiqToPercent(rawNFIQ)
+				slog.Debug("segmented finger quality from slapInfo", "device", deviceName, "finger", i, "nist_nfiq", rawNFIQ, "quality_pct", quality)
+			}
+		}
+
+		fingers = append(fingers, driver.ScanResult{
+			Template: goFingerImage,
+			Quality:  quality,
+			Width:    fW,
+			Height:   fH,
+			Finger:   fingerPos,
+		})
+
+		slog.Debug("segmented finger",
 			"index", i,
 			"finger", string(fingerPos),
 			"width", fW,
 			"height", fH,
 			"quality", quality,
 		)
-}
+	}
 
-// Free SDK-allocated memory — the full slap image
-sdkFreeImageData(imageData)
-// Note: fingerImageData, fingerImageWidth, fingerImageHeight, and slapInfo
-// are SDK-allocated arrays. The SDK manages their lifetime alongside the
-// main image data returned by RS_TakeImageDataSegment.
+	// Free SDK-allocated memory — the full slap image
+	sdkFreeImageData(imageData)
+	// Note: fingerImageData, fingerImageWidth, fingerImageHeight, and slapInfo
+	// are SDK-allocated arrays. The SDK manages their lifetime alongside the
+	// main image data returned by RS_TakeImageDataSegment.
 
-// Success beep
-sdkBeep(handle, rsBeepPattern1)
+	// Success beep
+	sdkBeep(handle, rsBeepPattern1)
 
-slog.Info("slap scan complete",
-	"device", deviceName,
-	"mode", string(mode),
-	"slapWidth", imageWidth,
-	"slapHeight", imageHeight,
-	"fingersDetected", nFingers,
-)
+	slog.Info("slap scan complete",
+		"device", deviceName,
+		"mode", string(mode),
+		"slapWidth", imageWidth,
+		"slapHeight", imageHeight,
+		"fingersDetected", nFingers,
+	)
 
-return &driver.SlapScanResult{
-	SlapImage:  goSlapImage,
-	SlapWidth:  imageWidth,
-	SlapHeight: imageHeight,
-	Fingers:    fingers,
-}, nil
+	return &driver.SlapScanResult{
+		SlapImage:  goSlapImage,
+		SlapWidth:  imageWidth,
+		SlapHeight: imageHeight,
+		Fingers:    fingers,
+	}, nil
 }
 
 // Enroll performs a multi-impression enrollment capture on the specified device.
@@ -612,87 +612,87 @@ func (d *RSDriver) Enroll(ctx context.Context, deviceName, userID, userName stri
 	d.mu.Unlock()
 	defer func() {
 		d.mu.Lock()
-	dev.capturing = false
-	d.mu.Unlock()
-}()
+		dev.capturing = false
+		d.mu.Unlock()
+	}()
 
-handle := dev.handle
+	handle := dev.handle
 
-// Default to 2 impressions if no fingers specified
-numImpressions := len(fingers)
-if numImpressions == 0 {
-	numImpressions = 2
-	fingers = make([]driver.FingerPosition, numImpressions)
-}
-
-// Capture each impression
-for i := 0; i < numImpressions; i++ {
-	select {
-	case <-ctx.Done():
-		sdkAbortCapture(handle)
-		clearLEDs(handle)
-		return ctx.Err()
-	default:
+	// Default to 2 impressions if no fingers specified
+	numImpressions := len(fingers)
+	if numImpressions == 0 {
+		numImpressions = 2
+		fingers = make([]driver.FingerPosition, numImpressions)
 	}
 
-	finger := fingers[i]
-
-	// Light LEDs for this impression
-	if finger != driver.FingerNone {
-		setFingerLEDs(handle, finger)
-	}
-
-	done := make(chan struct{})
-	go func() {
+	// Capture each impression
+	for i := 0; i < numImpressions; i++ {
 		select {
 		case <-ctx.Done():
 			sdkAbortCapture(handle)
-		case <-done:
+			clearLEDs(handle)
+			return ctx.Err()
+		default:
 		}
-	}()
 
-	var imageData unsafe.Pointer
-	var rc int
-	if finger != driver.FingerNone {
-		info := fingerLEDMap[finger]
-		imageData, _, _, rc = sdkTakeImageDataEx(handle, defaultCaptureTimeoutMS, info.fingerIndex, 1)
-	} else {
-		imageData, _, _, rc = sdkTakeImageData(handle, defaultCaptureTimeoutMS)
-	}
-	close(done)
+		finger := fingers[i]
 
-	// Clear LEDs after each impression
-	if finger != driver.FingerNone {
-		clearLEDs(handle)
-	}
-
-	if rc != RS_SUCCESS {
-		if rc == RS_ERR_CAPTURE_ABORTED {
-			return fmt.Errorf("enrollment cancelled on device %q (impression %d)", deviceName, i+1)
+		// Light LEDs for this impression
+		if finger != driver.FingerNone {
+			setFingerLEDs(handle, finger)
 		}
-		if rc == RS_ERR_CAPTURE_TIMEOUT {
-			return fmt.Errorf("%w on device %q (enrollment impression %d)", driver.ErrScanTimeout, deviceName, i+1)
+
+		done := make(chan struct{})
+		go func() {
+			select {
+			case <-ctx.Done():
+				sdkAbortCapture(handle)
+			case <-done:
+			}
+		}()
+
+		var imageData unsafe.Pointer
+		var rc int
+		if finger != driver.FingerNone {
+			info := fingerLEDMap[finger]
+			imageData, _, _, rc = sdkTakeImageDataEx(handle, defaultCaptureTimeoutMS, info.fingerIndex, 1)
+		} else {
+			imageData, _, _, rc = sdkTakeImageData(handle, defaultCaptureTimeoutMS)
 		}
-		return fmt.Errorf("enrollment scan %d failed on device %q: %s (code %d)",
-			i+1, deviceName, rsErrString(rc), rc)
+		close(done)
+
+		// Clear LEDs after each impression
+		if finger != driver.FingerNone {
+			clearLEDs(handle)
+		}
+
+		if rc != RS_SUCCESS {
+			if rc == RS_ERR_CAPTURE_ABORTED {
+				return fmt.Errorf("enrollment cancelled on device %q (impression %d)", deviceName, i+1)
+			}
+			if rc == RS_ERR_CAPTURE_TIMEOUT {
+				return fmt.Errorf("%w on device %q (enrollment impression %d)", driver.ErrScanTimeout, deviceName, i+1)
+			}
+			return fmt.Errorf("enrollment scan %d failed on device %q: %s (code %d)",
+				i+1, deviceName, rsErrString(rc), rc)
+		}
+
+		// Free SDK memory — for enrollment the server will request images
+		// via separate scan calls or the images are forwarded via events.
+		sdkFreeImageData(imageData)
+
+		// Success beep for each impression
+		sdkBeep(handle, rsBeepPattern1)
+
+		slog.Info("enrollment impression captured",
+			"device", deviceName,
+			"impression", i+1,
+			"finger", string(finger),
+			"userID", userID,
+		)
 	}
 
-	// Free SDK memory — for enrollment the server will request images
-	// via separate scan calls or the images are forwarded via events.
-	sdkFreeImageData(imageData)
-
-	// Success beep for each impression
-	sdkBeep(handle, rsBeepPattern1)
-
-	slog.Info("enrollment impression captured",
-		"device", deviceName,
-		"impression", i+1,
-		"finger", string(finger),
-		"userID", userID,
-	)
-}
-
-return nil
+	return nil
 }
 
 // ListDevices returns metadata for all initialized devices.

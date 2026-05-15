@@ -349,11 +349,11 @@ const (
 
 // DeviceInfo represents device information from the SDK
 type DeviceInfo struct {
-	DeviceType       int
-	ProductName      string
-	DeviceID         string
-	FirmwareVersion  string
-	HardwareVersion  string
+	DeviceType      int
+	ProductName     string
+	DeviceID        string
+	FirmwareVersion string
+	HardwareVersion string
 }
 
 // SlapInfo represents segmentation info for a single finger
