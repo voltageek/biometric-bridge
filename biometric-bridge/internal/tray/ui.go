@@ -18,7 +18,6 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 	systray "fyne.io/systray"
-	"golang.design/x/clipboard"
 	"image"
 	"image/color"
 	"image/png"
@@ -143,8 +142,8 @@ func StartUIWithTray(c *BridgeController, jwtStore *JWTStore, evBuf *EventBuffer
 			return
 		}
 		if token, ok := jwtStore.GetToken(); ok {
-			// Use golang.design/x/clipboard to avoid depending on Fyne clipboard API here
-			clipboard.Write(clipboard.MIMEText, []byte(token))
+			// Use Fyne's cross-platform clipboard API
+			w.Clipboard().SetContent(token)
 			copyBtn.SetText("COPIED")
 			go func() {
 				time.Sleep(800 * time.Millisecond)

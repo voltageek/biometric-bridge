@@ -4,13 +4,13 @@ go 1.24.7
 
 require (
 	fyne.io/fyne/v2 v2.5.5
+	fyne.io/systray v1.11.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/gorilla/websocket v1.5.3
 	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
-	fyne.io/systray v1.11.0 // indirect
 	github.com/BurntSushi/toml v1.4.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/fredbi/uri v1.1.0 // indirect
@@ -34,7 +34,6 @@ require (
 	github.com/srwiley/rasterx v0.0.0-20220730225603-2ab79fcdd4ef // indirect
 	github.com/stretchr/testify v1.8.4 // indirect
 	github.com/yuin/goldmark v1.7.1 // indirect
-	golang.design/x/clipboard v0.2.0 // indirect
 	golang.org/x/image v0.18.0 // indirect
 	golang.org/x/mobile v0.0.0-20231127183840-76ac6878050a // indirect
 	golang.org/x/net v0.25.0 // indirect
