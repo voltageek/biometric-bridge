@@ -4,15 +4,32 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+
+	"github.com/golang-jwt/jwt/v5"
 )
+
+// MiddlewareConfig holds configuration for the auth middleware.
+type MiddlewareConfig struct {
+	Validator       *TokenValidator
+	SkipPaths       map[string]bool
+	OnAuthenticated func(claims jwt.Claims) // Called when authentication succeeds
+}
 
 // Middleware returns an HTTP middleware that validates JWT Bearer tokens on all
 // requests except those matching skipPaths (e.g., "/healthz"). On failure, it
 // returns 401 with {"error":"unauthorized"}.
 func Middleware(v *TokenValidator, skipPaths map[string]bool) func(http.Handler) http.Handler {
+	return MiddlewareWithConfig(MiddlewareConfig{
+		Validator: v,
+		SkipPaths: skipPaths,
+	})
+}
+
+// MiddlewareWithConfig returns an HTTP middleware with full configuration support.
+func MiddlewareWithConfig(cfg MiddlewareConfig) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if skipPaths[r.URL.Path] {
+			if cfg.SkipPaths[r.URL.Path] {
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -24,10 +41,16 @@ func Middleware(v *TokenValidator, skipPaths map[string]bool) func(http.Handler)
 				return
 			}
 
-			if _, err := v.Validate(token); err != nil {
+			claims, err := cfg.Validator.Validate(token)
+			if err != nil {
 				slog.Debug("auth rejected: invalid token", "path", r.URL.Path, "remote", r.RemoteAddr, "error", err)
 				writeUnauthorized(w)
 				return
+			}
+
+			// Call the observer callback if configured
+			if cfg.OnAuthenticated != nil {
+				cfg.OnAuthenticated(claims)
 			}
 
 			next.ServeHTTP(w, r)

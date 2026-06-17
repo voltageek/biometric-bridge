@@ -6,6 +6,7 @@ biometric-bridge
 
 # Test scan artifacts
 /scan.*
+/scan*.png
 
 # Go
 *.exe

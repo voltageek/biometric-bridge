@@ -24,14 +24,23 @@ var upgrader = websocket.Upgrader{
 // and schedules a close frame when the JWT expires (close code 4001, "token expired").
 func NewHandler(broker *Broker, validator *auth.TokenValidator) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		slog.Debug("websocket upgrade requested", "remote", r.RemoteAddr)
+
 		// Validate JWT from query param
 		claims, err := auth.ExtractWSToken(validator, r)
 		if err != nil {
+			slog.Warn("websocket auth rejected", "remote", r.RemoteAddr, "error", err)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)
 			w.Write([]byte(`{"error":"unauthorized"}`))
 			return
 		}
+
+		slog.Debug("websocket auth ok",
+			"remote", r.RemoteAddr,
+			"sub", claims.Subject,
+			"exp", claims.ExpiresAt,
+		)
 
 		// Subscribe to broker (checks limit)
 		ch, ok := broker.Subscribe()
@@ -76,10 +85,12 @@ func NewHandler(broker *Broker, validator *auth.TokenValidator) http.HandlerFunc
 }
 
 func serveWS(conn *websocket.Conn, ch chan driver.Event, broker *Broker, expiryTimer *time.Timer) {
+	reason := "unknown"
 	defer func() {
 		broker.Unsubscribe(ch)
 		conn.Close()
 		slog.Info("websocket subscriber disconnected",
+			"reason", reason,
 			"subscribers", broker.SubscriberCount(),
 		)
 	}()
@@ -106,22 +117,31 @@ func serveWS(conn *websocket.Conn, ch chan driver.Event, broker *Broker, expiryT
 		case evt, ok := <-ch:
 			if !ok {
 				// Broker closed the channel (shutdown)
+				reason = "broker_closed"
 				conn.WriteMessage(websocket.CloseMessage,
 					websocket.FormatCloseMessage(websocket.CloseNormalClosure, "normal closure"))
 				return
 			}
+			slog.Debug("websocket event sent",
+				"type", evt.Type,
+				"deviceId", evt.DeviceName,
+				"userId", evt.UserID,
+			)
 			if err := conn.WriteJSON(evt); err != nil {
+				reason = "write_error"
 				slog.Debug("websocket write error", "error", err)
 				return
 			}
 
 		case <-expiryCh:
+			reason = "token_expired"
 			slog.Info("websocket token expired, closing connection")
 			conn.WriteMessage(websocket.CloseMessage,
 				websocket.FormatCloseMessage(4001, "token expired"))
 			return
 
 		case <-clientGone:
+			reason = "client_disconnected"
 			return
 		}
 	}
