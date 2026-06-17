@@ -1,2 +1,32 @@
 # Vendor SDKs (large binary distributions, not committed)
 RealScan_SDK_for_Linux_v2.2.0.2470/
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+vendor/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+bridge.log
+
+# Build outputs
+kinetic-vault
+biometric-bridge/bridge
+biometric-bridge/gentoken

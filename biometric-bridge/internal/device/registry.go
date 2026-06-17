@@ -115,6 +115,13 @@ func (r *Registry) State(name string) (driver.DeviceState, bool) {
 	return e.state, true
 }
 
+// Count returns the number of registered devices.
+func (r *Registry) Count() int {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return len(r.devices)
+}
+
 // DeviceError is returned by Acquire when a device cannot be locked.
 type DeviceError struct {
 	Code    int    // HTTP status code (400, 409, 503)

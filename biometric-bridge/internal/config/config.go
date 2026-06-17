@@ -20,10 +20,17 @@ type BridgeConfig struct {
 	Devices  []DeviceConfig    `yaml:"devices"`
 	Events   EventSettings     `yaml:"events"`
 	Log      LogSettings       `yaml:"log"`
+	Tray     TraySettings      `yaml:"tray"`
 	Driver   string            `yaml:"driver"`
 	GSDK     *GSDKSettings     `yaml:"gsdk,omitempty"`
 	BS2      *BS2Settings      `yaml:"bs2,omitempty"`
 	RealScan *RealScanSettings `yaml:"realscan,omitempty"`
+}
+
+// TraySettings holds tray-specific configuration used by the system tray UI.
+type TraySettings struct {
+	UpdateCheckURL string `yaml:"update_check_url"`
+	Version        string `yaml:"version"`
 }
 
 // BridgeSettings holds HTTP server and authentication settings.
@@ -53,6 +60,7 @@ type EventSettings struct {
 // LogSettings holds logging configuration.
 type LogSettings struct {
 	Level string `yaml:"level"`
+	File  string `yaml:"file"` // Log file path for persistent storage
 }
 
 // GSDKSettings holds G-SDK driver configuration.
